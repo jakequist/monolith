@@ -1,0 +1,47 @@
+{
+  "name": "monolith-git",
+  "version": "0.1.0",
+  "description": "Ergonomic bidirectional sync between a private monorepo and public subrepos. Submodule accuracy without submodule pain.",
+  "keywords": ["git", "monorepo", "subtree", "submodule", "open-source", "sync", "copybara"],
+  "license": "MIT",
+  "author": "Jake Quist",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jakequist/monolith.git"
+  },
+  "type": "module",
+  "bin": {
+    "monolith": "./bin/run.js"
+  },
+  "files": ["bin", "dist", "oclif.manifest.json"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run test/unit",
+    "test:e2e": "pnpm build && vitest run test/e2e",
+    "test:all": "pnpm build && vitest run"
+  },
+  "oclif": {
+    "bin": "monolith",
+    "dirname": "monolith",
+    "commands": "./dist/commands",
+    "topicSeparator": " "
+  },
+  "dependencies": {
+    "@oclif/core": "^4",
+    "execa": "^9",
+    "jiti": "^2",
+    "picomatch": "^4",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/picomatch": "^4",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}
