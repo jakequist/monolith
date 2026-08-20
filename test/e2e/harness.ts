@@ -218,3 +218,40 @@ export async function standardFixture(opts: {configExtra?: string} = {}): Promis
   })
   return {root, mono, pubDir}
 }
+
+/**
+ * Two subrepos, each with its own bare remote: `core/` at the top level and
+ * `packages/lib/` nested one level down, so path handling is exercised both ways.
+ */
+export async function multiFixture(): Promise<{
+  root: string
+  mono: TestRepo
+  corePubDir: string
+  libPubDir: string
+  corePub: TestRepo
+  libPub: TestRepo
+}> {
+  const root = sandbox()
+  const mono = await makeRepo(root, 'mono')
+  const corePubDir = await makeBareRemote(root, 'core-pub')
+  const libPubDir = await makeBareRemote(root, 'lib-pub')
+  writeConfig(mono, [
+    `    { name: 'core', path: 'core', remote: ${JSON.stringify(corePubDir)} }`,
+    `    { name: 'lib', path: 'packages/lib', remote: ${JSON.stringify(libPubDir)} }`,
+  ])
+  await mono.commit('chore: initial monorepo', {
+    'core/README.md': '# core\n',
+    'core/src/index.ts': 'export const hello = () => "hello"\n',
+    'packages/lib/README.md': '# lib\n',
+    'packages/lib/src/lib.ts': 'export const lib = true\n',
+    'private/secrets.md': 'internal only\n',
+  })
+  return {
+    root,
+    mono,
+    corePubDir,
+    libPubDir,
+    corePub: new TestRepo(corePubDir),
+    libPub: new TestRepo(libPubDir),
+  }
+}

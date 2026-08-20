@@ -59,20 +59,20 @@ subrepo, `core/` = the configured subrepo path.
 
 ## Multi-subrepo
 
-- [ ] S60 Two subrepos with separate pub remotes → `push` exports each to its own remote only.
-- [ ] S61 `push core` (named) touches only that subrepo's remote and cursor.
-- [ ] S62 One mono commit touching both subrepos exports to both pubs, each with only its own subtree.
+- [x] S60 Two subrepos with separate pub remotes → `push` exports each to its own remote only.
+- [x] S61 `push core` (named) touches only that subrepo's remote and cursor.
+- [x] S62 One mono commit touching both subrepos exports to both pubs, each with only its own subtree.
 
 ## Tags
 
-- [ ] S70 `monolith tag core v1.0.0` resolves the current mapping and tags the corresponding pub commit; tag visible on pub.
-- [ ] S71 Tagging when unexported commits exist → warn/refuse (tag would not match mono HEAD).
+- [x] S70 `monolith tag core v1.0.0` resolves the current mapping and tags the corresponding pub commit; tag visible on pub.
+- [x] S71 Tagging when unexported commits exist → warn/refuse (tag would not match mono HEAD).
 
 ## Robustness & UX
 
-- [ ] S80 Running any command outside a monolith-configured repo → helpful error, exit ≠ 0.
-- [ ] S81 Invalid config (bad path, missing remote, malformed exclude) → validation errors name the field and file.
-- [ ] S82 Subrepo `remote` unreachable → clean error surfaced with the git detail, no partial state written.
-- [ ] S83 A `.gitignore` inside `core/` is exported like any other file; mono root ignores do not leak into pub.
-- [ ] S84 Unicode filenames and messages survive round-trip export/import.
+- [x] S80 Running any command outside a monolith-configured repo → helpful error, exit ≠ 0.
+- [x] S81 Invalid config (bad path, missing remote, malformed exclude) → validation errors name the field and file.
+- [x] S82 Subrepo `remote` unreachable → clean error surfaced with the git detail, no partial state written.
+- [x] S83 A `.gitignore` inside `core/` is exported like any other file; mono root ignores do not leak into pub.
+- [x] S84 Unicode filenames and messages survive round-trip export/import.
 - [x] S85 `--json` output for `status` is stable and machine-parseable (locks the contract for CI use).
