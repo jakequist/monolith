@@ -11,9 +11,13 @@ submodule-free ergonomics."
   We never try to make the public repo a deterministic filter of monorepo history.
 - **Trailers are the source of truth for the commit mapping.**
   - Exported public commits carry `Monolith-Source: <monorepo-sha>`.
-  - Imported monorepo commits carry `Monolith-Origin: <public-sha>`.
-  - Export skips commits with `Monolith-Origin`; import skips commits with `Monolith-Source`.
-    This is what prevents ping-pong. Never break this symmetry.
+  - Imported monorepo commits carry `Monolith-Origin: <public-sha>` — the marker that a pub
+    commit is reflected in mono (so `pull` skips it and `push` stops refusing).
+  - Import skips pub commits with `Monolith-Source` (our own exports).
+  - Export does NOT skip by trailer: a pure import's tree already equals the pub tip, so the
+    tree-equality no-op check drops it; a *conflicted* import (merge of mono + pub edits)
+    differs from the pub tip and MUST export, or the resolution would be lost. This is what
+    keeps `pub tree == filtered(mono HEAD)` structurally true after every push.
 - **There is no authoritative state file.** Sync cursors are derived from trailers on every
   run (scan pub for `Monolith-Source`, mono for `Monolith-Origin`). Correctness must never
   depend on cached state; any cache added later is a pure optimization that `doctor` can

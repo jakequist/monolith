@@ -25,7 +25,7 @@ subrepo, `core/` = the configured subrepo path.
 - [x] S14 `push` twice → second run is a no-op ("up to date"), zero new pub commits, exit 0.
 - [x] S15 Modifying an excluded file exports nothing; if the commit *only* touched excluded files, no empty pub commit is created (commit skipped).
 - [x] S16 `rewriteMessage` hook in config is applied to exported commit messages.
-- [x] S17 Imported commits (carrying `Monolith-Origin`) are skipped on push — no ping-pong duplicates in pub.
+- [x] S17 Pure imports are tree-no-ops on push (dropped by the tree-equality check, not by trailer) — no ping-pong duplicates in pub.
 - [x] S18 Binary files, file deletions, and renames replay correctly (tree equality after each commit).
 - [x] S19 Executable bit and symlinks are preserved in exported trees.
 - [x] S20 Pub has an unimported external commit → `push` refuses, tells user to `monolith pull` first; pub untouched.
@@ -34,13 +34,13 @@ subrepo, `core/` = the configured subrepo path.
 
 ## Pull (import)
 
-- [ ] S30 External commit in pub → `pull` creates a mono commit placing the tree under `core/`, original author preserved, `Monolith-Origin` trailer added.
-- [ ] S31 Multiple upstream commits import in order.
-- [ ] S32 `pull` twice → second run is a no-op.
-- [ ] S33 Pub commits carrying `Monolith-Source` (our own exports) are skipped on pull.
-- [ ] S34 Uncommitted local changes under `core/` → `pull` refuses before touching anything.
-- [ ] S35 Conflicting edits (same file changed in mono and pub) → conflict markers in mono working tree, clear instructions, and after manual resolution `sync` completes cleanly.
-- [ ] S36 External commit adds a file matching an `exclude` pattern → defined behavior (import + warn), covered by test so the decision is locked in.
+- [x] S30 External commit in pub → `pull` creates a mono commit placing the tree under `core/`, original author preserved, `Monolith-Origin` trailer added.
+- [x] S31 Multiple upstream commits import in order.
+- [x] S32 `pull` twice → second run is a no-op.
+- [x] S33 Pub commits carrying `Monolith-Source` (our own exports) are skipped on pull.
+- [x] S34 Uncommitted local changes under `core/` (or anything staged anywhere) → `pull` refuses before touching anything.
+- [x] S35 Conflicting edits (same file changed in mono and pub) → conflict markers in mono working tree, clear instructions, and after `git add` + `monolith pull --continue` the import lands and the resolution round-trips back to pub on the next push.
+- [x] S36 External commit adds a file matching an `exclude` pattern → defined behavior (import + warn that the next push deletes it from pub), covered by test so the decision is locked in.
 
 ## Sync & convergence
 

@@ -2,11 +2,14 @@
  * Trailer keys that record the cross-repo commit mapping.
  *
  * - Public commits exported from the monorepo carry `Monolith-Source: <mono-sha>`.
- * - Monorepo commits imported from a public repo carry `Monolith-Origin: <pub-sha>`.
+ * - Monorepo commits imported from a public repo carry `Monolith-Origin: <pub-sha>`,
+ *   marking that pub commit as reflected in the monorepo.
  *
- * Export skips commits carrying Monolith-Origin; import skips commits carrying
- * Monolith-Source. This symmetry is what prevents commits ping-ponging between
- * the two repos, and it must never be broken.
+ * Import skips pub commits carrying Monolith-Source (our own exports). Export
+ * relies on tree equality, not trailers: pure imports are no-ops against the pub
+ * tip and get dropped, while conflicted imports (merges of mono + pub edits)
+ * export their resolution. Together these prevent ping-pong without ever losing
+ * merge resolutions.
  */
 export const SOURCE_TRAILER = 'Monolith-Source'
 export const ORIGIN_TRAILER = 'Monolith-Origin'

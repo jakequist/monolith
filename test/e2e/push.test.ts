@@ -159,29 +159,38 @@ describe('S16: rewriteMessage hook', () => {
   })
 })
 
-describe('S17: commits carrying Monolith-Origin', () => {
-  it('are skipped on push (no ping-pong duplicates)', async () => {
+describe('S17: pure imports are tree-no-ops on push', () => {
+  it('produces no ping-pong duplicates in pub', async () => {
     const {root, mono, pubDir, pub} = await seeded()
 
     const ext = await cloneRemote(root, pubDir, 'ext')
     await ext.commit('external: add EXTERNAL.md', {'EXTERNAL.md': 'from outside\n'})
-    const externalPubSha = await ext.head()
     await ext.git(['push', 'origin', 'main'])
 
-    // hand-craft the monorepo side of an import
-    await mono.commit(`external: add EXTERNAL.md\n\nMonolith-Origin: ${externalPubSha}`, {
-      'core/EXTERNAL.md': 'from outside\n',
-    })
-    await mono.commit('feat: local work', {'core/local.txt': 'local\n'})
+    const pull = await runMonolith(mono.dir, ['pull'])
+    expect(pull.exitCode, pull.stderr).toBe(0)
+    const pubHeadAfterImport = await pub.head()
 
     const res = await runMonolith(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
-    expect(res.stdout).toMatch(/exported 1 commit/)
+    expect(res.stdout).toMatch(/up to date/)
 
+    // The import reproduced the pub tip's tree, so it exports as nothing at all.
+    expect(await pub.head()).toBe(pubHeadAfterImport)
     const subjects = await pub.subjects()
-    expect(subjects).toEqual(['Initial import of core', 'external: add EXTERNAL.md', 'feat: local work'])
-    expect(subjects.filter((s) => s === 'external: add EXTERNAL.md')).toHaveLength(1)
+    expect(subjects).toEqual(['Initial import of core', 'external: add EXTERNAL.md'])
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
+
+    // Later local work still exports normally, exactly once.
+    await mono.commit('feat: local work', {'core/local.txt': 'local\n'})
+    const second = await runMonolith(mono.dir, ['push'])
+    expect(second.exitCode, second.stderr).toBe(0)
+    expect(second.stdout).toMatch(/exported 1 commit/)
+    expect(await pub.subjects()).toEqual([
+      'Initial import of core',
+      'external: add EXTERNAL.md',
+      'feat: local work',
+    ])
   })
 })
 

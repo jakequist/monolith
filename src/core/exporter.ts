@@ -1,8 +1,8 @@
 import type {ResolvedSubrepo} from '../config.js'
-import {EMPTY_TREE, commitTree, git, pushRef, readCommit, revList, trailerValues} from './git.js'
+import {EMPTY_TREE, commitTree, git, pushRef, readCommit, revList} from './git.js'
 import {filteredSubtree} from './filter.js'
 import type {SyncView} from './sync.js'
-import {ORIGIN_TRAILER, SOURCE_TRAILER, appendTrailer} from './trailers.js'
+import {SOURCE_TRAILER, appendTrailer} from './trailers.js'
 
 export interface ExportCandidate {
   monoSha: string
@@ -25,8 +25,12 @@ export interface ExportOptions {
 
 /**
  * Monorepo commits eligible for export: everything touching the subrepo path since the
- * derived base, minus commits already exported and minus commits imported from public
- * (they carry `Monolith-Origin` — re-exporting them would ping-pong).
+ * derived base, minus commits already exported.
+ *
+ * Imported commits (`Monolith-Origin`) are deliberately NOT filtered here. A pure import
+ * reproduces the public tip's tree, so `runExport`'s tree-equality check drops it; a
+ * *conflicted* import carries the user's merge resolution and must be exported, or
+ * `pub tree == filtered(mono HEAD)` would stop holding.
  */
 export async function planExport(
   root: string,
@@ -35,12 +39,8 @@ export async function planExport(
 ): Promise<{candidates: ExportCandidate[]}> {
   const range = view.exportBaseMono ? `${view.exportBaseMono}..HEAD` : 'HEAD'
   const shas = await revList(root, ['--reverse', '--topo-order', range, '--', subrepo.path])
-  if (shas.length === 0) return {candidates: []}
-  const origins = await trailerValues(root, ORIGIN_TRAILER, [range, '--', subrepo.path])
   return {
-    candidates: shas
-      .filter((sha) => !view.exportedMonoToPub.has(sha) && !origins.has(sha))
-      .map((monoSha) => ({monoSha})),
+    candidates: shas.filter((sha) => !view.exportedMonoToPub.has(sha)).map((monoSha) => ({monoSha})),
   }
 }
 
