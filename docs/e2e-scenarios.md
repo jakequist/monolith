@@ -9,28 +9,28 @@ subrepo, `core/` = the configured subrepo path.
 
 ## Init & seeding
 
-- [ ] S01 `init` scaffolds `monolith.config.ts`; running it again is a safe no-op.
-- [ ] S02 `seed` (default squash): mono with mixed history → pub gets exactly one "Initial import" commit whose tree equals `core/` subtree; cursor recorded.
-- [ ] S03 `seed --full-history`: every mono commit touching `core/` is replayed into pub in order with messages/authors preserved and `Monolith-Source` trailers.
-- [ ] S04 `seed` honors `exclude` patterns — excluded files absent from pub tree even though present in mono history.
-- [ ] S05 `seed` against a non-empty pub → refuses with guidance (suggest pull/adopt), exit ≠ 0.
-- [ ] S06 `seed` when `core/` has no committed files yet → clear error, nothing pushed.
+- [x] S01 `init` scaffolds `monolith.config.ts`; running it again is a safe no-op.
+- [x] S02 `seed` (default squash): mono with mixed history → pub gets exactly one "Initial import" commit whose tree equals `core/` subtree; cursor recorded.
+- [x] S03 `seed --full-history`: every mono commit touching `core/` is replayed into pub in order with messages/authors preserved and `Monolith-Source` trailers.
+- [x] S04 `seed` honors `exclude` patterns — excluded files absent from pub tree even though present in mono history.
+- [x] S05 `seed` against a non-empty pub → refuses with guidance (suggest pull/adopt), exit ≠ 0.
+- [x] S06 `seed` when `core/` has no committed files yet → clear error, nothing pushed.
 
 ## Push (export)
 
-- [ ] S10 One new mono commit touching `core/` → `push` creates one pub commit: same message, same author, tree = subtree, trailer appended.
-- [ ] S11 Commits touching only private dirs (`website/`) are not exported.
-- [ ] S12 A commit spanning `core/` + private dirs exports with only the `core/` subtree (private paths never in pub objects).
-- [ ] S13 Multiple pending commits export in order; pub log order matches mono order.
-- [ ] S14 `push` twice → second run is a no-op ("up to date"), zero new pub commits, exit 0.
-- [ ] S15 Modifying an excluded file exports nothing; if the commit *only* touched excluded files, no empty pub commit is created (commit skipped).
-- [ ] S16 `rewriteMessage` hook in config is applied to exported commit messages.
-- [ ] S17 Imported commits (carrying `Monolith-Origin`) are skipped on push — no ping-pong duplicates in pub.
-- [ ] S18 Binary files, file deletions, and renames replay correctly (tree equality after each commit).
-- [ ] S19 Executable bit and symlinks are preserved in exported trees.
-- [ ] S20 Pub has an unimported external commit → `push` refuses, tells user to `monolith pull` first; pub untouched.
-- [ ] S21 Secret-scan hook rejects a commit → push aborts *before* any ref update on pub; error names the offending commit/file.
-- [ ] S22 `transform` hook mutates the exported tree (e.g., swaps README) without affecting mono.
+- [x] S10 One new mono commit touching `core/` → `push` creates one pub commit: same message, same author, tree = subtree, trailer appended.
+- [x] S11 Commits touching only private dirs (`website/`) are not exported.
+- [x] S12 A commit spanning `core/` + private dirs exports with only the `core/` subtree (private paths never in pub objects).
+- [x] S13 Multiple pending commits export in order; pub log order matches mono order.
+- [x] S14 `push` twice → second run is a no-op ("up to date"), zero new pub commits, exit 0.
+- [x] S15 Modifying an excluded file exports nothing; if the commit *only* touched excluded files, no empty pub commit is created (commit skipped).
+- [x] S16 `rewriteMessage` hook in config is applied to exported commit messages.
+- [x] S17 Imported commits (carrying `Monolith-Origin`) are skipped on push — no ping-pong duplicates in pub.
+- [x] S18 Binary files, file deletions, and renames replay correctly (tree equality after each commit).
+- [x] S19 Executable bit and symlinks are preserved in exported trees.
+- [x] S20 Pub has an unimported external commit → `push` refuses, tells user to `monolith pull` first; pub untouched.
+- [x] S21 Secret-scan hook rejects a commit → push aborts *before* any ref update on pub; error names the offending commit/file.
+- [x] S22 `transform` hook mutates the exported tree (e.g., swaps README) without affecting mono.
 
 ## Pull (import)
 
