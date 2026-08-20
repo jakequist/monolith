@@ -105,9 +105,21 @@ export async function revParse(cwd: string, ref: string): Promise<string | null>
   }
 }
 
-/** Does this object exist locally (any type)? */
-export async function objectExists(cwd: string, sha: string): Promise<boolean> {
-  return gitOk(cwd, ['cat-file', '-e', sha])
+/**
+ * Which of these object ids are absent from the local object db. One batched
+ * `cat-file` process regardless of input size — trailer scans can name thousands.
+ */
+export async function missingObjects(cwd: string, shas: readonly string[]): Promise<Set<string>> {
+  const missing = new Set<string>()
+  if (shas.length === 0) return missing
+  const out = await git(cwd, ['cat-file', '--batch-check'], {input: shas.map((s) => `${s}\n`).join('')})
+  if (out === '') return missing
+  for (const line of out.split('\n')) {
+    // git answers "<input> missing" for anything it cannot resolve.
+    const [name, status] = line.split(' ')
+    if (name && status === 'missing') missing.add(name)
+  }
+  return missing
 }
 
 export interface CommitTreeInput {

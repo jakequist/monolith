@@ -122,6 +122,7 @@ export default class Seed extends MonolithCommand {
       importedPubShas: new Set(),
       exportBaseMono: null,
       unreflectedPub: [],
+      brokenSourceRefs: [],
     }
     const result = await runExport(root, subrepo, view, {
       candidates: shas.map((monoSha) => ({monoSha})),

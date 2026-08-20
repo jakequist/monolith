@@ -1,10 +1,16 @@
 import type {ResolvedSubrepo} from '../config.js'
-import {fetchBranch, lsRemoteBranch, objectExists, revList, revParse, trailerValues} from './git.js'
+import {fetchBranch, lsRemoteBranch, missingObjects, revList, revParse, trailerValues} from './git.js'
 import {ORIGIN_TRAILER, SOURCE_TRAILER} from './trailers.js'
 
 /** Where a subrepo's public branch is mirrored inside the monorepo's object db. */
 export function remoteTrackingRef(name: string): string {
   return `refs/monolith/${name}/remote`
+}
+
+/** A public commit claiming to export a monorepo commit that this clone does not have. */
+export interface BrokenSourceRef {
+  pubSha: string
+  monoSha: string
 }
 
 export interface SyncView {
@@ -23,6 +29,11 @@ export interface SyncView {
   exportBaseMono: string | null
   /** Public commits that are neither our exports nor already imported (oldest first). */
   unreflectedPub: string[]
+  /**
+   * `Monolith-Source` trailers in pub history naming monorepo commits that are not in
+   * this clone. The mapping cannot be trusted while any exist, so export refuses.
+   */
+  brokenSourceRefs: BrokenSourceRef[]
 }
 
 /**
@@ -50,6 +61,7 @@ export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Prom
       importedPubShas,
       exportBaseMono: null,
       unreflectedPub: [],
+      brokenSourceRefs: [],
     }
   }
 
@@ -63,22 +75,30 @@ export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Prom
     }
   }
 
+  const missing = await missingObjects(root, [...exportedMonoToPub.keys()])
+  const brokenSourceRefs: BrokenSourceRef[] = []
+
   let exportBaseMono: string | null = null
   for (const pubSha of await revList(root, [trackingRef])) {
     const values = sourceByPub.get(pubSha)
     if (!values) continue
     for (const monoSha of values) {
-      if (await objectExists(root, monoSha)) {
-        exportBaseMono = monoSha
-        break
-      }
+      if (missing.has(monoSha)) brokenSourceRefs.push({pubSha, monoSha})
+      else if (exportBaseMono === null) exportBaseMono = monoSha
     }
-    if (exportBaseMono) break
   }
 
   const unreflectedPub = (await revList(root, ['--reverse', trackingRef])).filter(
     (sha) => !sourceByPub.has(sha) && !importedPubShas.has(sha),
   )
 
-  return {trackingRef, pubHead, exportedMonoToPub, importedPubShas, exportBaseMono, unreflectedPub}
+  return {
+    trackingRef,
+    pubHead,
+    exportedMonoToPub,
+    importedPubShas,
+    exportBaseMono,
+    unreflectedPub,
+    brokenSourceRefs,
+  }
 }

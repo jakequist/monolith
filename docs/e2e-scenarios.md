@@ -44,18 +44,18 @@ subrepo, `core/` = the configured subrepo path.
 
 ## Sync & convergence
 
-- [ ] S40 `sync` = pull then push; from divergence with non-conflicting changes, one command converges both repos.
-- [ ] S41 Round-trip fidelity: after any sync, pub HEAD tree is byte-identical to mono `core/` subtree (minus excludes).
-- [ ] S42 Stability: push → pull → push → pull produces zero new commits after the first cycle (fixed point reached).
-- [ ] S43 Interleaved history (mono and pub alternate commits over several rounds) converges with every commit present exactly once on each side.
+- [x] S40 `sync` = pull then push; from divergence with non-conflicting changes, one command converges both repos.
+- [x] S41 Round-trip fidelity: after any sync, pub HEAD tree is byte-identical to mono `core/` subtree (minus excludes).
+- [x] S42 Stability: push → pull → push → pull produces zero new commits after the first cycle (fixed point reached).
+- [x] S43 Interleaved history (mono and pub alternate commits over several rounds) converges with every commit present exactly once on each side. Known exception, locked in by the test: in a round where *both* sides moved, the import sits on top of the local commit, so its resolution is re-exported and that subject appears twice in pub (same rule that preserves conflict resolutions).
 
 ## Status, state & doctor
 
-- [ ] S50 `status` reports per-subrepo ahead/behind counts (N unexported, M unimported) and "in sync" when clean.
-- [ ] S51 No state file exists by design — after arbitrary push/pull cycles, deleting nothing is possible; instead verify all cursors derive from trailers: `doctor` reports the derived sync points and they match reality.
-- [ ] S52 Broken mapping (pub trailer referencing a mono sha that doesn't exist locally) → `doctor` detects and reports it clearly.
-- [ ] S53 Fresh clone of mono in a new directory ("second machine") → `status`/`push`/`pull` work immediately with no state to restore.
-- [ ] S54 Mono main was rebased/force-pushed (cursor no longer an ancestor of HEAD) → loud error naming the problem; nothing exported.
+- [x] S50 `status` reports per-subrepo ahead/behind counts (N unexported, M unimported) and "in sync" when clean.
+- [x] S51 No state file exists by design — after arbitrary push/pull cycles, deleting nothing is possible; instead verify all cursors derive from trailers: `doctor` reports the derived sync points and they match reality.
+- [x] S52 Broken mapping (pub trailer referencing a mono sha that doesn't exist locally) → `doctor` detects and reports it clearly.
+- [x] S53 Fresh clone of mono in a new directory ("second machine") → `status`/`push`/`pull` work immediately with no state to restore.
+- [x] S54 Mono main was rebased/force-pushed (cursor no longer an ancestor of HEAD) → loud error naming the problem; nothing exported.
 
 ## Multi-subrepo
 
@@ -75,4 +75,4 @@ subrepo, `core/` = the configured subrepo path.
 - [ ] S82 Subrepo `remote` unreachable → clean error surfaced with the git detail, no partial state written.
 - [ ] S83 A `.gitignore` inside `core/` is exported like any other file; mono root ignores do not leak into pub.
 - [ ] S84 Unicode filenames and messages survive round-trip export/import.
-- [ ] S85 `--json` output for `status` is stable and machine-parseable (locks the contract for CI use).
+- [x] S85 `--json` output for `status` is stable and machine-parseable (locks the contract for CI use).

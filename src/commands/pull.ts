@@ -1,18 +1,8 @@
 import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
 import {MonolithCommand} from '../lib/base.js'
-import {GitError} from '../core/git.js'
-import {
-  ImportConflictError,
-  type PullSequencer,
-  checkImportPreconditions,
-  continueImport,
-  readSequencer,
-  runImport,
-  sequencerPath,
-  unmergedPaths,
-} from '../core/importer.js'
-import {loadSyncView} from '../core/sync.js'
+import {importSubrepo, pullInProgressMessage, reportImportFailure} from '../lib/ops.js'
+import {type PullSequencer, continueImport, readSequencer, unmergedPaths} from '../core/importer.js'
 
 export default class Pull extends MonolithCommand {
   static description = 'Import new public subrepo commits into the monorepo'
@@ -52,11 +42,7 @@ export default class Pull extends MonolithCommand {
       return
     }
 
-    if (state) {
-      this.error(
-        `A pull of ${state.subrepo} is already in progress.\nResolve the conflict, \`git add\` the files, then run:\n  monolith pull --continue\nTo abort instead, delete ${await sequencerPath(root)}.`,
-      )
-    }
+    if (state) this.error(await pullInProgressMessage(root, state))
 
     for (const subrepo of this.selectSubrepos(project, args.subrepo)) await this.pullOne(root, subrepo)
   }
@@ -76,49 +62,21 @@ export default class Pull extends MonolithCommand {
       )
     }
 
+    const reporter = this.reporter()
     const result = await continueImport(root, subrepo, state, {
       onWarn: (message) => this.logToStderr(message),
-    }).catch((err: unknown) => this.reportImportFailure(subrepo, err))
+    }).catch((err: unknown) => reportImportFailure(subrepo, err, reporter))
 
     this.report(subrepo, result.imported.length)
   }
 
   private async pullOne(root: string, subrepo: ResolvedSubrepo): Promise<void> {
-    const view = await loadSyncView(root, subrepo).catch((err: unknown) => {
-      if (err instanceof GitError) {
-        this.error(`${subrepo.name}: cannot reach remote ${subrepo.remote}\n${err.stderr}`)
-      }
-      throw err
-    })
-
-    if (view.pubHead === null) {
-      this.error(
-        `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch — this subrepo has not been seeded.\nRun \`monolith seed ${subrepo.name}\` to publish it for the first time.`,
-      )
-    }
-
-    const problem = await checkImportPreconditions(root, subrepo)
-    if (problem) this.error(problem)
-
-    const result = await runImport(root, subrepo, view.unreflectedPub, {
-      onWarn: (message) => this.logToStderr(message),
-    }).catch((err: unknown) => this.reportImportFailure(subrepo, err))
-
-    this.report(subrepo, result.imported.length)
+    const imported = await importSubrepo(root, subrepo, this.reporter())
+    this.report(subrepo, imported)
   }
 
   private report(subrepo: ResolvedSubrepo, count: number): void {
     if (count === 0) this.log(`✓ ${subrepo.name}: up to date`)
     else this.log(`✓ ${subrepo.name}: imported ${count} commit(s)`)
-  }
-
-  private reportImportFailure(subrepo: ResolvedSubrepo, err: unknown): never {
-    if (err instanceof ImportConflictError) {
-      this.error(
-        `${subrepo.name}: importing ${err.pubSha.slice(0, 10)} conflicts with local changes.\nConflicted files:\n${err.conflicts.map((f) => `  ${f}`).join('\n')}\nEdit each file to resolve the markers, \`git add\` it, then run:\n  monolith pull --continue\nTo abort instead, delete ${err.statePath}.`,
-      )
-    }
-    if (err instanceof GitError) this.error(`${subrepo.name}: ${err.message}`)
-    this.error(`${subrepo.name}: ${(err as Error).message}`)
   }
 }

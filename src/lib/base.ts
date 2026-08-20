@@ -1,8 +1,18 @@
 import {Command} from '@oclif/core'
 import {ConfigError, loadProject, type Project, type ResolvedSubrepo} from '../config.js'
 import {gitOk} from '../core/git.js'
+import type {Reporter} from './ops.js'
 
 export abstract class MonolithCommand extends Command {
+  /** Adapter so `src/lib/ops.ts` can report without depending on oclif. */
+  protected reporter(): Reporter {
+    return {
+      log: (message) => this.log(message),
+      warn: (message) => this.logToStderr(message),
+      fail: (message) => this.error(message),
+    }
+  }
+
   /** Load config walking up from cwd; exits with a helpful error when absent/invalid. */
   protected async requireProject(): Promise<Project> {
     let project: Project | null
