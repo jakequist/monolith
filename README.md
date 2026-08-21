@@ -402,7 +402,7 @@ git commit -am "release: vX.Y.Z"
 git tag vX.Y.Z && git push origin main vX.Y.Z
 ```
 
-`.github/workflows/release.yml` then refuses the tag if it disagrees with `package.json`, runs `pnpm test:all`, packs the tarball, creates the GitHub release with both assets (`monosplice-X.Y.Z.tgz` immutable, `monosplice.tgz` stable), and publishes the same tarball to the npm registry (requires the `NPM_TOKEN` repo secret; the step warns and skips when it's absent). `.github/workflows/ci.yml` runs `pnpm typecheck` and `pnpm test:all` on every push to `main` and every pull request.
+`.github/workflows/release.yml` then refuses the tag if it disagrees with `package.json`, runs `pnpm test:all`, packs the tarball, creates the GitHub release with both assets (`monosplice-X.Y.Z.tgz` immutable, `monosplice.tgz` stable), and publishes the same tarball to npm via [trusted publishing](https://docs.npmjs.com/trusted-publishers) — OIDC, no token secret; the one-time setup is registering `release.yml` as a trusted publisher in the package settings on npmjs.com. `.github/workflows/ci.yml` runs `pnpm typecheck` and `pnpm test:all` on every push to `main` and every pull request.
 
 [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) is the living backlog. Every scenario has a stable ID (`S10`, `S42`, …) that its test name references, and items are checked off as their tests land. New behaviour starts as a new scenario there.
 

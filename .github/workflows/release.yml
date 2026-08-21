@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  # OIDC token for npm trusted publishing — no NPM_TOKEN secret exists anywhere.
+  id-token: write
 
 jobs:
   release:
@@ -57,13 +59,9 @@ jobs:
             "monosplice-${version}.tgz" \
             monosplice.tgz
 
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm (trusted publishing)
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::warning::NPM_TOKEN secret is not set — skipped npm publish. Add the secret and re-run this workflow (or npm publish the release tarball manually)."
-            exit 0
-          fi
+          # OIDC exchange requires a recent npm; node 20's bundled npm is too old.
+          npm install -g npm@latest
           version="${GITHUB_REF_NAME#v}"
           npm publish "monosplice-${version}.tgz" --access public
