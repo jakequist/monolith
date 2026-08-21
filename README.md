@@ -13,10 +13,6 @@ monorepo stays a completely normal git repo; so does every repo spliced out of i
 open-source part of a larger codebase, to vendor a third-party project you patch, or to
 maintain a fork whose PR branch rebuilds itself.
 
-**Status: early, v0.x.** The core loop (attach / push / pull / sync / status / doctor /
-tag) is covered by a black-box e2e suite, but the API and output are not frozen
-yet. [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) lists exactly what is proven to work.
-
 ## Install
 
 ```sh
@@ -39,12 +35,15 @@ monosplice init          # writes monosplice.config.ts
 
 ### I have a monorepo and want to extract a subrepo
 
-```sh
-monosplice attach core git@github.com:you/core.git
-# you/core.git (main) is empty. Publish core's current tree as its first public commit? [y/N]
+```bash
+# Create a new repo at github.com:acme/core.git
+
+$ monosplice attach core git@github.com:acme/core.git
+
+# acme/core.git (main) is empty. Publish core's current tree as its first public commit? [y/N]
 ```
 
-`core/`'s contents become the root of `you/core` in one baseline commit (`--yes` in
+`core/`'s contents become the root of `myorg/core` in one baseline commit (`--yes` in
 scripts; `--full-history` replays every commit that ever touched `core/` instead).
 
 ### I have a monorepo and want to import an external repo
