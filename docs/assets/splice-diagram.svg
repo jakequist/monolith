@@ -1,65 +1,245 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="880" height="340" viewBox="0 0 880 340" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" role="img" aria-label="A monorepo file tree with core/, cli/ and vendor/lodash/ spliced out to standalone repos via bidirectional sync arrows; website/ and infra/ are never exported">
-  <style>
-    .card      { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
-    .caption   { fill: #57606a; font-size: 12px; letter-spacing: 0.08em; }
-    .tree      { fill: #1f2328; font-size: 14px; }
-    .muted     { fill: #6e7781; font-size: 14px; }
-    .note      { fill: #6e7781; font-size: 12px; font-style: italic; }
-    .spliced   { fill: #0969da; font-weight: 600; }
-    .repohost  { fill: #6e7781; font-size: 13px; }
-    .reponame  { fill: #1f2328; font-weight: 600; }
-    .arrow     { stroke: #0969da; fill: none; stroke-width: 1.6; }
-    .arrowhead { fill: #0969da; }
-    .synclabel { fill: #0969da; font-size: 11px; }
-    @media (prefers-color-scheme: dark) {
-      .card      { fill: #161b22; stroke: #30363d; }
-      .caption   { fill: #8b949e; }
-      .tree      { fill: #e6edf3; }
-      .muted     { fill: #8b949e; }
-      .note      { fill: #8b949e; }
-      .spliced   { fill: #58a6ff; }
-      .repohost  { fill: #8b949e; }
-      .reponame  { fill: #e6edf3; }
-      .arrow     { stroke: #58a6ff; }
-      .arrowhead { fill: #58a6ff; }
-      .synclabel { fill: #58a6ff; }
-    }
-  </style>
-  <defs>
-    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" class="arrowhead"/>
-    </marker>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1420" height="982" viewBox="0 0 1420 982" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif" role="img" aria-label="A monorepo file tree with packages/core, packages/client and vendor/lodash highlighted and synced bidirectionally to standalone repos core.git (private), client.git (public) and lodash.git (public)">
+<style>
+  .cardl { fill:#f6f8fa; stroke:#d0d7de; stroke-width:1.5; }
+  .cardg { fill:#f0fbf3; stroke:#2da44e; stroke-width:2; }
+  .cardb { fill:#f0f6ff; stroke:#1f6feb; stroke-width:2; }
+  .cardo { fill:#fff8ec; stroke:#f0883e; stroke-width:2; }
+  .boxg  { fill:#e0f5e6; stroke:#2da44e; stroke-width:1.5; }
+  .boxb  { fill:#e2eefd; stroke:#1f6feb; stroke-width:1.5; }
+  .boxo  { fill:#fdf0d9; stroke:#f0883e; stroke-width:1.5; }
+  .title { fill:#1f2328; font-size:19px; font-weight:700; }
+  .tname { fill:#1f2328; font-size:14.5px; font-weight:600; }
+  .icon  { stroke:#57606a; fill:none; stroke-width:1.5; }
+  .ticon { stroke:#1f2328; fill:none; stroke-width:2; }
+  .conn  { stroke:#8c959f; fill:none; stroke-width:1.2; }
+  .arrg  { stroke:#2da44e; stroke-width:4; }
+  .arrb  { stroke:#1f6feb; stroke-width:4; }
+  .arro  { stroke:#f0883e; stroke-width:4; }
+  .ahg   { fill:#2da44e; } .ahb { fill:#1f6feb; } .aho { fill:#f0883e; }
+  .bdgbg { fill:#dafbe1; } .bdgtx { fill:#1a7f37; font-size:13.5px; font-weight:600; }
+  .bdbbg { fill:#ddf4ff; } .bdbtx { fill:#0969da; font-size:13.5px; font-weight:600; }
+  .bdobg { fill:#fff1e5; } .bdotx { fill:#bc4c00; font-size:13.5px; font-weight:600; }
+  @media (prefers-color-scheme: dark) {
+    .cardl { fill:#161b22; stroke:#30363d; }
+    .cardg { fill:#101f1b; stroke:#3fb950; }
+    .cardb { fill:#111d2e; stroke:#58a6ff; }
+    .cardo { fill:#211a18; stroke:#db6d28; }
+    .boxg  { fill:#153622; stroke:#3fb950; }
+    .boxb  { fill:#183153; stroke:#58a6ff; }
+    .boxo  { fill:#42291b; stroke:#db6d28; }
+    .title { fill:#e6edf3; }
+    .tname { fill:#e6edf3; }
+    .icon  { stroke:#8b949e; }
+    .ticon { stroke:#e6edf3; }
+    .conn  { stroke:#484f58; }
+    .arrg  { stroke:#3fb950; } .arrb { stroke:#58a6ff; } .arro { stroke:#db6d28; }
+    .ahg   { fill:#3fb950; } .ahb { fill:#58a6ff; } .aho { fill:#db6d28; }
+    .bdgbg { fill:#163923; } .bdgtx { fill:#3fb950; }
+    .bdbbg { fill:#193357; } .bdbtx { fill:#58a6ff; }
+    .bdobg { fill:#462b1b; } .bdotx { fill:#db6d28; }
+  }
+</style>
+<defs>
+  <symbol id="folder" viewBox="0 0 18 18" width="18" height="18">
+    <path d="M2,5.5 a2,2 0 0 1 2,-2 h3.6 l2,2.4 h4.4 a2,2 0 0 1 2,2 v5.6 a2,2 0 0 1 -2,2 h-10 a2,2 0 0 1 -2,-2 z"/>
+  </symbol>
+  <symbol id="file" viewBox="0 0 18 18" width="18" height="18">
+    <path d="M4.5,2.5 h6 l3.5,3.5 v8 a1.5,1.5 0 0 1 -1.5,1.5 h-8 a1.5,1.5 0 0 1 -1.5,-1.5 v-10 a1.5,1.5 0 0 1 1.5,-1.5 z"/>
+    <path d="M10.5,2.5 v3.5 h3.5"/>
+  </symbol>
+  <symbol id="lock" viewBox="0 0 22 22" width="22" height="22">
+    <rect x="4.5" y="9.5" width="13" height="9.5" rx="2"/>
+    <path d="M7.5,9.5 v-2.5 a3.5,3.5 0 0 1 7,0 v2.5"/>
+  </symbol>
+  <symbol id="globe" viewBox="0 0 22 22" width="22" height="22">
+    <circle cx="11" cy="11" r="8"/>
+    <ellipse cx="11" cy="11" rx="3.6" ry="8"/>
+    <path d="M3,11 h16"/>
+  </symbol>
+  <marker id="ah-arrg" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+    <path d="M1,1 L11,6 L1,11 z" class="ahg"/>
+  </marker>
+  <marker id="ah-arrb" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+    <path d="M1,1 L11,6 L1,11 z" class="ahb"/>
+  </marker>
+  <marker id="ah-arro" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+    <path d="M1,1 L11,6 L1,11 z" class="aho"/>
+  </marker>
+</defs>
 
-  <text x="40" y="36" class="caption">YOUR MONOREPO</text>
-  <text x="560" y="36" class="caption">STANDALONE REPOS</text>
+<rect x="60" y="24" width="560" height="936" rx="14" class="cardl"/>
+<use href="#lock" x="84" y="46" class="ticon"/>
+<text x="112" y="64" class="title">monorepo.git</text>
+<rect x="138" y="246" width="458" height="136" rx="10" class="boxg"/>
+<rect x="138" y="386" width="458" height="136" rx="10" class="boxb"/>
+<rect x="138" y="692" width="458" height="136" rx="10" class="boxo"/>
 
-  <rect x="40" y="56" width="300" height="264" rx="10" class="card"/>
+<path class="conn" d="M100,135 V926"/>
+<path class="conn" d="M100,148 H118"/>
+<path class="conn" d="M100,226 H118"/>
+<path class="conn" d="M100,672 H118"/>
+<path class="conn" d="M100,848 H118"/>
+<path class="conn" d="M100,900 H118"/>
+<path class="conn" d="M100,926 H118"/>
+<path class="conn" d="M130,161 V174"/>
+<path class="conn" d="M130,174 H148"/>
+<path class="conn" d="M160,187 V200"/>
+<path class="conn" d="M160,200 H178"/>
+<path class="conn" d="M130,239 V542"/>
+<path class="conn" d="M130,262 H148"/>
+<path class="conn" d="M130,402 H148"/>
+<path class="conn" d="M130,542 H148"/>
+<path class="conn" d="M160,275 V366"/>
+<path class="conn" d="M160,288 H178"/>
+<path class="conn" d="M160,314 H178"/>
+<path class="conn" d="M160,340 H178"/>
+<path class="conn" d="M160,366 H178"/>
+<path class="conn" d="M160,415 V506"/>
+<path class="conn" d="M160,428 H178"/>
+<path class="conn" d="M160,454 H178"/>
+<path class="conn" d="M160,480 H178"/>
+<path class="conn" d="M160,506 H178"/>
+<path class="conn" d="M160,555 V646"/>
+<path class="conn" d="M160,568 H178"/>
+<path class="conn" d="M160,594 H178"/>
+<path class="conn" d="M160,620 H178"/>
+<path class="conn" d="M160,646 H178"/>
+<path class="conn" d="M130,685 V708"/>
+<path class="conn" d="M130,708 H148"/>
+<path class="conn" d="M160,721 V812"/>
+<path class="conn" d="M160,734 H178"/>
+<path class="conn" d="M160,760 H178"/>
+<path class="conn" d="M160,786 H178"/>
+<path class="conn" d="M160,812 H178"/>
+<path class="conn" d="M130,861 V874"/>
+<path class="conn" d="M130,874 H148"/>
 
-  <text x="64" y="96" class="tree" font-weight="600">my-monorepo/</text>
-  <text x="64" y="132" class="muted">├── <tspan class="spliced">core/</tspan></text>
-  <text x="64" y="162" class="muted">├── <tspan class="spliced">cli/</tspan></text>
-  <text x="64" y="192" class="muted">├── <tspan class="tree">website/</tspan></text>
-  <text x="64" y="222" class="muted">├── <tspan class="tree">infra/</tspan></text>
-  <text x="200" y="207" class="note">(never exported)</text>
-  <text x="64" y="252" class="muted">└── <tspan class="tree">vendor/</tspan></text>
-  <text x="92" y="282" class="muted">└── <tspan class="spliced">lodash/</tspan></text>
+<use href="#folder" x="92" y="113" class="icon"/>
+<text x="118" y="127" class="tname">/</text>
+<use href="#folder" x="122" y="139" class="icon"/>
+<text x="148" y="153" class="tname">apps</text>
+<use href="#folder" x="152" y="165" class="icon"/>
+<text x="178" y="179" class="tname">web</text>
+<use href="#file" x="182" y="191" class="icon"/>
+<text x="208" y="205" class="tname">main.tsx</text>
+<use href="#folder" x="122" y="217" class="icon"/>
+<text x="148" y="231" class="tname">packages</text>
+<use href="#folder" x="152" y="253" class="icon"/>
+<text x="178" y="267" class="tname">core</text>
+<use href="#file" x="182" y="279" class="icon"/>
+<text x="208" y="293" class="tname">package.json</text>
+<use href="#folder" x="182" y="305" class="icon"/>
+<text x="208" y="319" class="tname">src</text>
+<use href="#file" x="182" y="331" class="icon"/>
+<text x="208" y="345" class="tname">README.md</text>
+<use href="#file" x="182" y="357" class="icon"/>
+<text x="208" y="371" class="tname">index.ts</text>
+<use href="#folder" x="152" y="393" class="icon"/>
+<text x="178" y="407" class="tname">client</text>
+<use href="#file" x="182" y="419" class="icon"/>
+<text x="208" y="433" class="tname">package.json</text>
+<use href="#folder" x="182" y="445" class="icon"/>
+<text x="208" y="459" class="tname">src</text>
+<use href="#file" x="182" y="471" class="icon"/>
+<text x="208" y="485" class="tname">README.md</text>
+<use href="#file" x="182" y="497" class="icon"/>
+<text x="208" y="511" class="tname">index.ts</text>
+<use href="#folder" x="152" y="533" class="icon"/>
+<text x="178" y="547" class="tname">server</text>
+<use href="#file" x="182" y="559" class="icon"/>
+<text x="208" y="573" class="tname">package.json</text>
+<use href="#folder" x="182" y="585" class="icon"/>
+<text x="208" y="599" class="tname">src</text>
+<use href="#file" x="182" y="611" class="icon"/>
+<text x="208" y="625" class="tname">README.md</text>
+<use href="#file" x="182" y="637" class="icon"/>
+<text x="208" y="651" class="tname">index.ts</text>
+<use href="#folder" x="122" y="663" class="icon"/>
+<text x="148" y="677" class="tname">vendor</text>
+<use href="#folder" x="152" y="699" class="icon"/>
+<text x="178" y="713" class="tname">lodash</text>
+<use href="#file" x="182" y="725" class="icon"/>
+<text x="208" y="739" class="tname">package.json</text>
+<use href="#folder" x="182" y="751" class="icon"/>
+<text x="208" y="765" class="tname">src</text>
+<use href="#file" x="182" y="777" class="icon"/>
+<text x="208" y="791" class="tname">README.md</text>
+<use href="#file" x="182" y="803" class="icon"/>
+<text x="208" y="817" class="tname">LICENSE</text>
+<use href="#folder" x="122" y="839" class="icon"/>
+<text x="148" y="853" class="tname">docs</text>
+<use href="#file" x="152" y="865" class="icon"/>
+<text x="178" y="879" class="tname">README.md</text>
+<use href="#file" x="122" y="891" class="icon"/>
+<text x="148" y="905" class="tname">package.json</text>
+<use href="#file" x="122" y="917" class="icon"/>
+<text x="148" y="931" class="tname">pnpm-workspace.yaml</text>
 
-  <rect x="560" y="84" width="280" height="52" rx="10" class="card"/>
-  <text x="700" y="115" text-anchor="middle" class="repohost">github.com/<tspan class="reponame">you/core</tspan></text>
+<rect x="900" y="60" width="460" height="234" rx="14" class="cardg"/>
+<use href="#lock" x="924" y="86" class="ticon"/>
+<text x="952" y="104" class="title">core.git</text>
+<rect x="1254.5" y="82" width="85.5" height="28" rx="14" class="bdgbg"/>
+<text x="1297.25" y="101" text-anchor="middle" class="bdgtx">Private</text>
+<path class="conn" d="M940,165 V256"/>
+<path class="conn" d="M940,178 H958"/>
+<path class="conn" d="M940,204 H958"/>
+<path class="conn" d="M940,230 H958"/>
+<path class="conn" d="M940,256 H958"/>
+<use href="#folder" x="932" y="143" class="icon"/>
+<text x="958" y="157" class="tname">/</text>
+<use href="#file" x="962" y="169" class="icon"/>
+<text x="988" y="183" class="tname">package.json</text>
+<use href="#folder" x="962" y="195" class="icon"/>
+<text x="988" y="209" class="tname">src</text>
+<use href="#file" x="962" y="221" class="icon"/>
+<text x="988" y="235" class="tname">README.md</text>
+<use href="#file" x="962" y="247" class="icon"/>
+<text x="988" y="261" class="tname">index.ts</text>
 
-  <rect x="560" y="164" width="280" height="52" rx="10" class="card"/>
-  <text x="700" y="195" text-anchor="middle" class="repohost">github.com/<tspan class="reponame">you/cli</tspan></text>
+<rect x="900" y="380" width="460" height="234" rx="14" class="cardb"/>
+<use href="#globe" x="924" y="406" class="ticon"/>
+<text x="952" y="424" class="title">client.git</text>
+<rect x="1263" y="402" width="77" height="28" rx="14" class="bdbbg"/>
+<text x="1301.5" y="421" text-anchor="middle" class="bdbtx">Public</text>
+<path class="conn" d="M940,485 V576"/>
+<path class="conn" d="M940,498 H958"/>
+<path class="conn" d="M940,524 H958"/>
+<path class="conn" d="M940,550 H958"/>
+<path class="conn" d="M940,576 H958"/>
+<use href="#folder" x="932" y="463" class="icon"/>
+<text x="958" y="477" class="tname">/</text>
+<use href="#file" x="962" y="489" class="icon"/>
+<text x="988" y="503" class="tname">package.json</text>
+<use href="#folder" x="962" y="515" class="icon"/>
+<text x="988" y="529" class="tname">src</text>
+<use href="#file" x="962" y="541" class="icon"/>
+<text x="988" y="555" class="tname">README.md</text>
+<use href="#file" x="962" y="567" class="icon"/>
+<text x="988" y="581" class="tname">index.ts</text>
 
-  <rect x="560" y="244" width="280" height="52" rx="10" class="card"/>
-  <text x="700" y="275" text-anchor="middle" class="repohost">github.com/<tspan class="reponame">lodash/lodash</tspan></text>
+<rect x="900" y="700" width="460" height="234" rx="14" class="cardo"/>
+<use href="#globe" x="924" y="726" class="ticon"/>
+<text x="952" y="744" class="title">lodash.git</text>
+<rect x="1263" y="722" width="77" height="28" rx="14" class="bdobg"/>
+<text x="1301.5" y="741" text-anchor="middle" class="bdotx">Public</text>
+<path class="conn" d="M940,805 V896"/>
+<path class="conn" d="M940,818 H958"/>
+<path class="conn" d="M940,844 H958"/>
+<path class="conn" d="M940,870 H958"/>
+<path class="conn" d="M940,896 H958"/>
+<use href="#folder" x="932" y="783" class="icon"/>
+<text x="958" y="797" class="tname">/</text>
+<use href="#file" x="962" y="809" class="icon"/>
+<text x="988" y="823" class="tname">package.json</text>
+<use href="#file" x="962" y="835" class="icon"/>
+<text x="988" y="849" class="tname">lodash.js</text>
+<use href="#file" x="962" y="861" class="icon"/>
+<text x="988" y="875" class="tname">README.md</text>
+<use href="#file" x="962" y="887" class="icon"/>
+<text x="988" y="901" class="tname">LICENSE</text>
 
-  <path d="M352,127 C 430,127 470,110 548,110" class="arrow" marker-start="url(#ah)" marker-end="url(#ah)"/>
-  <text x="450" y="108" text-anchor="middle" class="synclabel">sync</text>
+<line x1="636" y1="314" x2="884" y2="177" class="arrg" marker-start="url(#ah-arrg)" marker-end="url(#ah-arrg)"/>
+<line x1="636" y1="454" x2="884" y2="497" class="arrb" marker-start="url(#ah-arrb)" marker-end="url(#ah-arrb)"/>
+<line x1="636" y1="760" x2="884" y2="817" class="arro" marker-start="url(#ah-arro)" marker-end="url(#ah-arro)"/>
 
-  <path d="M352,157 C 430,157 470,190 548,190" class="arrow" marker-start="url(#ah)" marker-end="url(#ah)"/>
-  <text x="450" y="163" text-anchor="middle" class="synclabel">sync</text>
-
-  <path d="M352,277 C 430,277 470,270 548,270" class="arrow" marker-start="url(#ah)" marker-end="url(#ah)"/>
-  <text x="450" y="262" text-anchor="middle" class="synclabel">sync</text>
 </svg>
