@@ -7,14 +7,17 @@ off as their tests land. IDs are stable — reference them in commits and test n
 Conventions: **mono** = the private monorepo, **pub** = the public bare remote for a
 subrepo, `core/` = the configured subrepo path.
 
-## Init & seeding
+## Init & first publish
+
+> Reworked when `seed` was retired: outbound first contact now lives in `push`
+> (confirmation-gated), inbound first contact in `adopt` (see S90s).
 
 - [x] S01 `init` scaffolds `monolith.config.ts`; running it again is a safe no-op.
-- [x] S02 `seed` (default squash): mono with mixed history → pub gets exactly one "Initial import" commit whose tree equals `core/` subtree; cursor recorded.
-- [x] S03 `seed --full-history`: every mono commit touching `core/` is replayed into pub in order with messages/authors preserved and `Monolith-Source` trailers.
-- [x] S04 `seed` honors `exclude` patterns — excluded files absent from pub tree even though present in mono history.
-- [x] S05 `seed` against a non-empty pub → refuses with guidance (suggest pull/adopt), exit ≠ 0.
-- [x] S06 `seed` when `core/` has no committed files yet → clear error, nothing pushed.
+- [ ] S02 First `push --yes` (baseline): mono with mixed history → pub gets exactly one baseline commit whose tree equals `core/` subtree, carrying `Monolith-Source`.
+- [ ] S03 First `push --yes --full-history`: every mono commit touching `core/` replayed in order with messages/authors preserved and `Monolith-Source` trailers.
+- [ ] S04 First push honors `exclude` patterns — excluded files absent from pub tree even though present in mono history.
+- [ ] S05 Push against a pub that has history but no relation to mono → refuses, points at `monolith adopt`, exit ≠ 0.
+- [ ] S06 First push when `core/` has no committed files yet → clear error, nothing pushed.
 
 ## Push (export)
 
@@ -76,3 +79,49 @@ subrepo, `core/` = the configured subrepo path.
 - [x] S83 A `.gitignore` inside `core/` is exported like any other file; mono root ignores do not leak into pub.
 - [x] S84 Unicode filenames and messages survive round-trip export/import.
 - [x] S85 `--json` output for `status` is stable and machine-parseable (locks the contract for CI use).
+
+## First contact & adopt (auto-detection matrix)
+
+> The user never needs to know monolith internals: outbound t=0 is a
+> confirmation-gated `push`, inbound t=0 is `adopt` (shallow by default).
+> "Baseline" = the sync point; nothing in mono history is ever squashed.
+
+- [ ] S90 `push` with an unpublished subrepo, non-interactive, no `--yes` → refuses with a one-line explanation and the exact command to run; remote stays empty; other subrepos in the same run are still pushed.
+- [ ] S91 `push --yes` publishes the baseline and reports it distinctly from normal exports; an immediately following `push` is "up to date"; later commits export per-commit.
+- [ ] S92 `push --yes --full-history` replays all history; scan hooks run per replayed commit and a throwing hook aborts with nothing pushed (the dead-secret case).
+- [ ] S93 `adopt <name>` with pub history and NO mono dir (shallow default): exactly ONE mono commit placing pub HEAD's tree at the path, `Monolith-Origin: <pubHead>`; then `pull`, `push`, `status` all report in sync (ancestry-based reflection — pub's 50-commit history must NOT show as "50 to pull").
+- [ ] S94 `adopt <name> --history`: full per-commit import with authors/messages preserved (the old pull-adopt behavior), then in sync.
+- [ ] S95 `adopt` when BOTH sides have content and trees match exactly → baseline recorded (empty mono commit with Origin trailer); push/pull in sync; a NEW mono commit then exports parented on the EXISTING pub head (shared history going forward).
+- [ ] S96 `adopt` when both sides have content and trees differ → refuses listing the differing paths, nothing written anywhere; `adopt --theirs` replaces the mono dir with pub content in one commit (Origin trailer) and lands in sync; the pre-adopt mono content stays in mono history but never exports.
+- [ ] S97 `pull` against an unrelated pub (no trailers, mono dir exists) → refuses and points at `adopt`; nothing imported, working tree untouched.
+- [ ] S98 REGRESSION GUARD: after any adopt (S93/S95/S96), `push` must never re-export pre-adoption mono history — the export scan base must anchor on the adopt commit's Origin trailer, not just pub Source trailers. Assert pub log gains nothing but genuinely new commits.
+- [ ] S99 Matrix dead end: configured subrepo with empty mono dir AND empty remote → every command gives the same clear "nothing exists yet" error, exit ≠ 0.
+- [ ] S99a `adopt` preconditions: dirty files under the path, or staged changes anywhere → refuses before fetching/writing (same rules as pull).
+- [ ] S99b `adopt` on an already-related subrepo (trailers exist) → "already adopted/published", no-op, exit ≠ 0 with explanation.
+
+## Vendor
+
+- [ ] S100 `vendor <url>`: creates `vendor/<name>/` from the remote's HEAD tree, appends a valid entry to monolith.config.ts, and commits BOTH in a single commit carrying `Monolith-Origin: <pubHead>`; `status` in sync; `pull`/`push` up to date.
+- [ ] S101 Upstream advances → `pull` imports the new commits into `vendor/<name>/` per-commit.
+- [ ] S102 Local patch to a vendored file + upstream change to a different file → `pull` three-way merges cleanly; both changes present; `status` shows only the local patch as "to push".
+- [ ] S103 Local patch + upstream edit to the SAME line → conflict markers under `vendor/<name>/`, `pull --continue` completes, trees converge after push.
+- [ ] S104 `vendor` with a name or path already in config → refuses; config byte-identical, no commit created.
+- [ ] S105 `vendor` with a dirty working tree or existing directory at the target path → refuses before fetching or writing anything.
+- [ ] S106 `vendor` with an unreachable URL or missing branch → clean error; config untouched, no commit, no directory.
+- [ ] S107 Config-append safety: a monolith.config.ts whose shape the inserter can't parse → vendor makes NO changes and prints the exact config snippet to paste manually.
+
+## Triangular remotes (fork PR workflow)
+
+> Optional per-subrepo `upstream` (fetch/pull source, e.g. lodash/lodash);
+> `remote` becomes the push destination (your fork); optional `pushBranch`
+> (default: `branch`). Without `upstream`, behavior is byte-for-byte today's.
+
+- [ ] S110 With `upstream` set: `pull` imports from upstream even when the fork remote is empty or stale; the fork is never fetched for import decisions.
+- [ ] S111 `push` exports local patches to `remote`'s `pushBranch`, parented on the UPSTREAM head (PR-ready: fork branch is upstream + patches, linear); upstream repo is never written to.
+- [ ] S112 Upstream advances while local patches exist: `sync` imports upstream then re-exports patches on top of the new upstream head, updating the fork branch (force-with-lease — the branch is ours); resulting fork branch = upstream head + patches, nothing lost.
+- [ ] S113 No `upstream` configured → push/pull/status behavior identical to before (explicit regression flow, non-force push preserved).
+- [ ] S114 Unreachable upstream vs unreachable fork remote → two distinct, correctly-attributed error messages; status attributes each side.
+- [ ] S115 `vendor <upstream-url> --fork <fork-url>` writes both `upstream` and `remote` (+ default pushBranch) in the config entry; pull comes from upstream, push goes to fork.
+- [ ] S116 PR merged upstream as a fast-forward/merge (exported commits with their `Monolith-Source` trailers land in upstream) → `pull` is a no-op, fixed point holds.
+- [ ] S117 PR squash-merged upstream (same tree, new commit, trailers lost) → `pull` records it (possibly as an empty import), `push` stays up to date; no ping-pong, trees converged.
+- [ ] S118 `status`/`doctor` with `upstream`: ahead/behind measured against upstream; doctor fetches and reports both sides without false alarms.
