@@ -92,7 +92,7 @@ export async function unmergedPaths(root: string): Promise<string[]> {
 export async function checkImportPreconditions(
   root: string,
   subrepo: ResolvedSubrepo,
-  /** Command to retry, so `adopt` does not tell the user to run `pull`. */
+  /** Command to retry, so `attach` does not tell the user to run `pull`. */
   retry = `monosplice pull ${subrepo.name}`,
 ): Promise<string | null> {
   if (!(await revParse(root, 'HEAD'))) {
@@ -109,7 +109,7 @@ export async function checkImportPreconditions(
   return null
 }
 
-/** First parent of a commit, or the empty tree for a root commit (also the "adopt" case). */
+/** First parent of a commit, or the empty tree for a root commit (also the snapshot case). */
 async function diffBase(root: string, sha: string): Promise<string> {
   const line = await git(root, ['rev-list', '--parents', '-n', '1', sha])
   return line.split(' ')[1] ?? EMPTY_TREE

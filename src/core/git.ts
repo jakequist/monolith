@@ -277,6 +277,39 @@ export async function pushRef(cwd: string, remote: string, sha: string, dstRef: 
 }
 
 /**
+ * Advisory write-access check: a dry-run push of a ref to exactly where it already points.
+ * Nothing is ever written — but the transport still has to open `receive-pack` on the far
+ * side, which is where a remote you can only read from says no. Returns null when the push
+ * would be allowed, or git's own complaint when it would not.
+ *
+ * Never prompts (`GIT_TERMINAL_PROMPT=0`) and never hangs the command it decorates: a remote
+ * that stops answering is reported as "could not tell", not waited on.
+ */
+export async function probePushAccess(
+  cwd: string,
+  remote: string,
+  sha: string,
+  branch: string,
+  timeoutMs = 20_000,
+): Promise<string | null> {
+  const args = ['push', '--dry-run', remote, `${sha}:refs/heads/${branch}`]
+  try {
+    const res = await execa('git', args, {
+      cwd,
+      env: {GIT_TERMINAL_PROMPT: '0'},
+      reject: false,
+      timeout: timeoutMs,
+      stripFinalNewline: true,
+    })
+    if (res.exitCode === 0) return null
+    const stderr = typeof res.stderr === 'string' ? res.stderr.trim() : ''
+    return stderr === '' ? `git ${args.join(' ')} failed (exit ${res.exitCode})` : stderr
+  } catch (err) {
+    return (err as Error).message
+  }
+}
+
+/**
  * Replace a remote ref, but only while it still holds `expect`. Used for the one ref monosplice
  * owns outright — the fork's push branch, which is rebuilt from upstream on every push — so
  * that a rewrite still refuses when somebody else moved the branch in the meantime.

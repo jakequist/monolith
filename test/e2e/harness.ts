@@ -177,6 +177,22 @@ export async function makeBareRemote(root: string, name: string): Promise<string
   return dir
 }
 
+/**
+ * Make a bare repo readable but not writable, the way a public repo you have no push rights
+ * to behaves. `ls-remote`/`fetch` (upload-pack) keep working; `push` — including
+ * `push --dry-run` — dies before it can talk to the remote, with git's own "Could not read
+ * from remote repository. Please make sure you have the correct access rights" wording.
+ *
+ * A filesystem `chmod` cannot express this (an up-to-date local push short-circuits without
+ * ever writing), and hooks never run on a dry run; poisoning a config key only `receive-pack`
+ * parses is the one mechanism that is deterministic for a `file:`-style remote.
+ */
+export async function denyPushes(bareDir: string): Promise<void> {
+  await execa('git', ['config', '--file', path.join(bareDir, 'config'), 'receive.maxInputSize', 'not-a-number'], {
+    env: GIT_ENV,
+  })
+}
+
 /** Clone a remote (e.g. to act as an external contributor) and return a TestRepo. */
 export async function cloneRemote(root: string, remoteDir: string, name: string): Promise<TestRepo> {
   const dir = path.join(root, name)

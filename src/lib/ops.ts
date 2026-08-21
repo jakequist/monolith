@@ -55,14 +55,14 @@ export async function loadView(root: string, subrepo: ResolvedSubrepo, r: Report
 /** Neither side has anything: the one matrix cell where no monosplice command can help. */
 export function nothingExistsYet(subrepo: ResolvedSubrepo): string {
   return `${subrepo.name}: nothing exists yet — ${subrepo.path}/ has no committed files at HEAD, and ${pullSource(subrepo)} has no ${subrepo.branch} branch.
-Commit something under ${subrepo.path}/ and run \`monosplice push ${subrepo.name} --yes\` to publish it, or run \`monosplice adopt ${subrepo.name}\` once the remote has content.`
+Commit something under ${subrepo.path}/ and run \`monosplice push ${subrepo.name} --yes\` to publish it, or run \`monosplice attach ${subrepo.path}\` once the remote has content.`
 }
 
 /** The public branch has history, but nothing on either side references the other. */
 export function unrelatedRemote(subrepo: ResolvedSubrepo, consequence: string): string {
   return `${subrepo.name}: ${pullSource(subrepo)} (${subrepo.branch}) has history that is unrelated to this monorepo — no commit on either side references the other.
 ${consequence} To connect the two repositories, run:
-  monosplice adopt ${subrepo.name}`
+  monosplice attach ${subrepo.path}`
 }
 
 /** Stop unless the public branch exists, distinguishing "not published" from "nothing at all". */

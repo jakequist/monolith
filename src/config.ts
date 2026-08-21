@@ -180,7 +180,7 @@ export async function loadProject(startDir: string): Promise<Project | null> {
   const configPath = findConfig(startDir)
   if (!configPath) return null
   // moduleCache: false so a second load in the same process reads the file as it is on disk.
-  // `vendor` rewrites the config and then re-loads it to verify the edit; a cached module
+  // `attach` rewrites the config and then re-loads it to verify the edit; a cached module
   // would hand it back the pre-edit config and it would revert a perfectly good insertion.
   const jiti = createJiti(pathToFileURL(configPath).href, {interopDefault: true, moduleCache: false})
   let raw: unknown

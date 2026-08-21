@@ -5,13 +5,12 @@ import {git, gitOk, revParse} from './git.js'
 import {pullSource} from './sync.js'
 
 /**
- * `vendor` is sugar: it derives a subrepo entry from a git URL, writes it into
- * monosplice.config.ts, and hands the rest to the adopt machinery. Everything here is pure
- * text or read-only git, so the command can run every check before it writes a byte.
+ * Turning a git URL and a folder into a subrepo entry, writing it into monosplice.config.ts,
+ * and refusing to when the file is not something a regex may safely rewrite. Everything here
+ * is pure text or read-only git, so `attach` can run every check before it writes a byte.
  *
- * `attach` is the same sugar aimed at a path the user names, so both commands share this
- * module: the slot check, the config insertion and the paste-it-yourself fallback are one
- * implementation with the wording that differs passed in.
+ * The module is named for the retired `vendor` command it was extracted from; `attach`
+ * absorbed that command and is now its only caller.
  */
 
 /** A subrepo entry as it exists before the config knows about it. */
@@ -24,30 +23,6 @@ export interface VendorEntry {
   upstream?: string
   /** Branch pushed on the fork. Omitted from the rendered entry when it equals `branch`. */
   pushBranch?: string
-}
-
-/** Names we are willing to invent for the user: one safe path segment, nothing clever. */
-const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-
-/**
- * Repo basename of a git URL, minus `.git`. Handles scp-style (`git@host:owner/repo.git`),
- * URL forms (`https://host/owner/repo`, `ssh://git@host:22/owner/repo.git`) and plain
- * filesystem paths. Returns null when the result would not be a usable name — the command
- * then asks for `--name` instead of guessing.
- */
-export function deriveVendorName(url: string): string | null {
-  let rest = url.trim()
-  const fragment = rest.search(/[#?]/)
-  if (fragment !== -1) rest = rest.slice(0, fragment)
-  rest = rest.replace(/[/\\]+$/, '')
-
-  let last = rest.split(/[/\\]/).pop() ?? ''
-  // scp-style URLs put host and path on either side of a colon, with no slash between.
-  const colon = last.lastIndexOf(':')
-  if (colon !== -1) last = last.slice(colon + 1)
-  last = last.replace(/\.git$/i, '')
-
-  return SAFE_NAME.test(last) ? last : null
 }
 
 /** Single-quoted JS string literal. Config files are hand-edited, so keep them readable. */
@@ -200,16 +175,16 @@ export function pasteItYourself(
 }
 
 /**
- * `vendor` and `attach` stage a config edit and commit the index, so — unlike `pull`, which
- * only cares about the subrepo directory — they insist the whole tracked tree is clean.
+ * Writing a new entry stages a config edit and commits the index, so — unlike `pull`, which
+ * only cares about the subrepo directory — it insists the whole tracked tree is clean.
  * Untracked files are ignored: they are never committed, and an untracked directory sitting
  * at the target path is reported by the caller's own existence check, in far clearer words.
  */
 export async function checkConfigEditPreconditions(
   root: string,
   retry: string,
-  /** Gerund naming what the command is doing, e.g. "Vendoring" / "Attaching". */
-  verb = 'Vendoring',
+  /** Gerund naming what the command is doing, e.g. "Attaching". */
+  verb = 'Attaching',
 ): Promise<string | null> {
   if (!(await revParse(root, 'HEAD'))) {
     return `${root} has no commits yet — commit something before ${verb.toLowerCase()} into it. Nothing was changed.`

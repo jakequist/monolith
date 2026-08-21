@@ -4,27 +4,20 @@ import {pullSource} from './sync.js'
 import {ORIGIN_TRAILER, appendTrailer} from './trailers.js'
 
 /**
- * Adopt is an *import*-side operation, so — unlike export — it is allowed to write the
- * working tree and index. It reuses the importer's patch machinery rather than plumbing
- * trees directly, so the subrepo directory ends up as a normal part of the monorepo commit.
+ * Adoption — connecting the monorepo to a public branch it did not create — is an *import*-
+ * side operation, so unlike export it is allowed to write the working tree and index. It
+ * reuses the importer's patch machinery rather than plumbing trees directly, so the subrepo
+ * directory ends up as a normal part of the monorepo commit.
  */
 
 /**
- * The commit that anchors the monorepo to a public branch it did not create. The verb is the
- * only thing that varies: `adopt` connects a configured subrepo, `vendor` adds the config
- * entry too, but both record the same anchor.
+ * The commit that anchors the monorepo to a public branch it did not create. One shape for
+ * every route in: a folder attach that also writes the config entry records exactly the same
+ * anchor as one that only makes first contact.
  */
-export function originMessage(verb: string, subrepo: ResolvedSubrepo, pubHead: string): string {
-  const subject = `${verb} ${subrepo.name} from ${pullSource(subrepo)} @ ${pubHead.slice(0, 10)}\n`
-  return appendTrailer(subject, ORIGIN_TRAILER, pubHead)
-}
-
 export function adoptMessage(subrepo: ResolvedSubrepo, pubHead: string): string {
-  return originMessage('Adopt', subrepo, pubHead)
-}
-
-export function vendorMessage(subrepo: ResolvedSubrepo, pubHead: string): string {
-  return originMessage('Vendor', subrepo, pubHead)
+  const subject = `Adopt ${subrepo.name} from ${pullSource(subrepo)} @ ${pubHead.slice(0, 10)}\n`
+  return appendTrailer(subject, ORIGIN_TRAILER, pubHead)
 }
 
 /** Paths where two trees disagree, as the user would see them inside the subrepo. */
@@ -52,12 +45,4 @@ export async function applyTreeInto(
 export async function commitStaged(root: string, message: string): Promise<string> {
   await git(root, ['commit', '--allow-empty', '--no-verify', '-m', message])
   return git(root, ['rev-parse', 'HEAD'])
-}
-
-export async function commitAdopt(
-  root: string,
-  subrepo: ResolvedSubrepo,
-  pubHead: string,
-): Promise<string> {
-  return commitStaged(root, adoptMessage(subrepo, pubHead))
 }

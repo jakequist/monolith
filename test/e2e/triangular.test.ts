@@ -65,17 +65,17 @@ async function triFixture(opts: TriOptions = {}): Promise<Tri> {
   return {root, mono, upDir, up, upstream: new TestRepo(upDir), forkDir, fork: new TestRepo(forkDir)}
 }
 
-/** Fixture + `adopt`, i.e. the monorepo now tracks upstream at its current head. */
-async function adopted(opts: TriOptions = {}): Promise<Tri> {
+/** Fixture + url-less `attach`, i.e. the monorepo now tracks upstream at its current head. */
+async function attached(opts: TriOptions = {}): Promise<Tri> {
   const fx = await triFixture(opts)
-  const res = await runMonosplice(fx.mono.dir, ['adopt', 'lodash'])
+  const res = await runMonosplice(fx.mono.dir, ['attach', 'vendor/lodash'])
   expect(res.exitCode, res.stderr).toBe(0)
   return fx
 }
 
-/** Adopted + one local patch, pushed to the fork branch. */
+/** Attached + one local patch, pushed to the fork branch. */
 async function patched(opts: TriOptions = {}): Promise<Tri & {forkHead: string; upstreamHead: string}> {
-  const fx = await adopted(opts)
+  const fx = await attached(opts)
   fx.mono.write('vendor/lodash/index.js', 'module.exports = {patched: true}\n')
   await fx.mono.commit('fix(lodash): guard against a null prototype')
 
@@ -104,7 +104,7 @@ async function firstParents(repo: TestRepo, ref: string): Promise<string[]> {
 
 describe('S110: import decisions come from upstream, never from the fork', () => {
   it('pulls upstream commits while the fork remote is still empty', async () => {
-    const {mono, up, fork, upstream} = await adopted()
+    const {mono, up, fork, upstream} = await attached()
 
     await up.commit('lodash: add map', {'map.js': 'exports.map = 1\n'}, UP_AUTHOR)
     await up.commit('lodash: add zip', {'zip.js': 'exports.zip = 1\n'}, UP_AUTHOR)
@@ -145,7 +145,7 @@ describe('S110: import decisions come from upstream, never from the fork', () =>
 
 describe('S111: push builds the fork branch on the upstream head', () => {
   it('exports patches to the fork, parented on upstream, leaving upstream untouched', async () => {
-    const {mono, fork, upstream, upDir, forkDir} = await adopted()
+    const {mono, fork, upstream, upDir, forkDir} = await attached()
     const upstreamRefs = await refs(upstream)
     const upstreamHead = await upstream.git(['rev-parse', 'refs/heads/main'])
 
@@ -180,7 +180,7 @@ describe('S111: push builds the fork branch on the upstream head', () => {
   })
 
   it('honors pushBranch', async () => {
-    const {mono, fork} = await adopted({pushBranch: 'monosplice/patches'})
+    const {mono, fork} = await attached({pushBranch: 'monosplice/patches'})
     mono.write('vendor/lodash/index.js', 'module.exports = {patched: true}\n')
     await mono.commit('fix(lodash): guard against a null prototype')
 
@@ -288,7 +288,7 @@ describe('S113: no upstream configured — behavior is unchanged', () => {
 
 describe('S114: unreachable upstream vs unreachable fork', () => {
   it('blames the upstream URL when upstream is unreachable', async () => {
-    const fx = await adopted()
+    const fx = await attached()
     const missing = `${fx.root}/nope-upstream.git`
     writeConfig(fx.mono, [
       `    { name: 'lodash', path: 'vendor/lodash', remote: ${JSON.stringify(fx.forkDir)}, upstream: ${JSON.stringify(missing)} }`,
@@ -305,7 +305,7 @@ describe('S114: unreachable upstream vs unreachable fork', () => {
   })
 
   it('blames the fork URL when only the fork is unreachable', async () => {
-    const fx = await adopted()
+    const fx = await attached()
     const missing = `${fx.root}/nope-fork.git`
     writeConfig(fx.mono, [
       `    { name: 'lodash', path: 'vendor/lodash', remote: ${JSON.stringify(missing)}, upstream: ${JSON.stringify(fx.upDir)} }`,
@@ -343,7 +343,7 @@ describe('S114: unreachable upstream vs unreachable fork', () => {
   })
 })
 
-describe('S115: vendor --fork', () => {
+describe('S138: attach --fork', () => {
   it('writes upstream + fork into the config, pulls upstream and pushes to the fork', async () => {
     const root = sandbox()
     const upDir = await makeBareRemote(root, 'lodash')
@@ -362,11 +362,14 @@ describe('S115: vendor --fork', () => {
     const fork = new TestRepo(forkDir)
     const upstreamRefs = await refs(upstream)
 
-    const res = await runMonosplice(mono.dir, ['vendor', upDir, '--fork', forkDir])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', upDir, '--fork', forkDir])
     expect(res.exitCode, res.stderr).toBe(0)
-    expect(res.stdout).toContain('✓ vendored lodash at vendor/lodash')
+    expect(res.stdout).toContain('✓ attached lodash at vendor/lodash')
     expect(res.stdout).toContain(upDir)
     expect(res.stdout).toContain(forkDir)
+    // The fork is never probed for write access: a triangular subrepo says outright that
+    // the fork is the push destination.
+    expect(res.stderr).toBe('')
 
     const config = mono.read('monosplice.config.ts')
     expect(config).toContain(`remote: '${forkDir}'`)
@@ -483,7 +486,7 @@ describe('S117: the PR is squash-merged upstream', () => {
 
 describe('S118: status and doctor with an upstream', () => {
   it('measures ahead/behind against upstream and reports both remotes', async () => {
-    const {mono, up, upDir, forkDir} = await adopted()
+    const {mono, up, upDir, forkDir} = await attached()
 
     mono.write('vendor/lodash/index.js', 'module.exports = {patched: true}\n')
     await mono.commit('fix(lodash): guard against a null prototype')

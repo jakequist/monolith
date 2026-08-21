@@ -106,7 +106,7 @@ export interface SyncView {
   /**
    * Do the two repos know about each other at all? False means first contact: the public
    * branch has history, but nothing on either side references the other, so the only safe
-   * move is `monosplice adopt`.
+   * move is `monosplice attach`.
    */
   related: boolean
 }
@@ -128,7 +128,7 @@ export function unpublishedView(name: string): SyncView {
 
 /**
  * Does this monorepo commit reproduce, exactly, the public commit it claims to reflect?
- * An `adopt` commit and a clean import do; a *conflicted* import and an import of a file the
+ * An attach anchor commit and a clean import do; a *conflicted* import and an import of a file the
  * config excludes do not — they carry work the public branch has never seen, so they cannot
  * be an export boundary. Hooks are allowed to throw here: an unusable filter simply means
  * "not an anchor", and `push` reports the hook failure on its own terms.
@@ -148,8 +148,8 @@ async function reflectsExactly(
  * Walk monorepo history from HEAD and stop at the first commit whose publishable subtree the
  * public branch already contains. Two ways to qualify: pub says it exported this commit
  * (`Monosplice-Source`), or the commit imported public work and reproduces it exactly
- * (`Monosplice-Origin`) — the second is what stops a `push` right after an `adopt` from
- * replaying the monorepo's entire pre-adoption history onto the adopted repo.
+ * (`Monosplice-Origin`) — the second is what stops a `push` right after an `attach` from
+ * replaying the monorepo's entire pre-attach history onto the newly connected repo.
  *
  * One `rev-list` for the walk, then O(1) lookups: both trailer maps are already in hand and
  * `pubAncestors` is the pub-side walk this function's caller needed anyway, so an Origin
@@ -180,7 +180,7 @@ async function findExportAnchor(
 
 /**
  * Public commits the monorepo has not seen. Ancestry, not per-commit bookkeeping: a shallow
- * `adopt` records only the pub head as imported, and every ancestor of a reflected commit is
+ * a snapshot `attach` records only the pub head as imported, and every ancestor of a reflected commit is
  * reflected by construction. Our own exports drop out by trailer.
  */
 async function findUnreflectedPub(

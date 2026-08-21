@@ -1,9 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import {fileURLToPath} from 'node:url'
 import {describe, expect, it} from 'vitest'
 import {
   TestRepo,
   cloneRemote,
+  denyPushes,
   makeBareRemote,
   makeRepo,
   runMonosplice,
@@ -474,7 +476,7 @@ describe('S126: a config shape the inserter cannot handle', () => {
   const spread =
     'const shared: Array<{path: string; remote: string}> = []\n\nexport default {\n  subrepos: [...shared],\n}\n'
 
-  it('changes nothing, prints the snippet, and names `adopt` when the remote has history', async () => {
+  it('changes nothing, prints the snippet, and names the url-less attach when the remote has history', async () => {
     const {mono, pubDir} = await attachFixture()
     mono.write('monosplice.config.ts', spread)
     await mono.commit('chore: config built from a spread')
@@ -487,7 +489,8 @@ describe('S126: a config shape the inserter cannot handle', () => {
     expect(res.stdout).toContain(`path: 'core'`)
     expect(res.stdout).toContain(`remote: '${pubDir}'`)
     expect(res.stdout).toMatch(/monosplice\.config\.ts/)
-    expect(res.stderr).toMatch(/monosplice adopt core/)
+    expect(res.stderr).toMatch(/monosplice attach core/)
+    expect(res.stderr).not.toMatch(/monosplice (adopt|vendor)/)
 
     expect(configBytes(mono).equals(before)).toBe(true)
     expect(await mono.head()).toBe(head)
@@ -514,6 +517,149 @@ describe('S126: a config shape the inserter cannot handle', () => {
   })
 })
 
+describe('S131: attach --history on a new entry', () => {
+  it('commits the config entry on its own, then replays every public commit', async () => {
+    const {mono, pub, pubDir, pubHead, pubSubjects} = await attachFixture({commits: 5})
+    const monoBefore = await mono.subjects()
+
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--history'])
+    expect(res.exitCode, res.stderr).toBe(0)
+
+    const subjects = await mono.subjects()
+    expect(subjects).toEqual([...monoBefore, `Attach core: track ${pubDir} (main)`, ...pubSubjects])
+    // the config commit stands alone
+    expect(await mono.git(['diff', '--name-only', `HEAD~${pubSubjects.length + 1}`, `HEAD~${pubSubjects.length}`])).toBe(
+      'monosplice.config.ts',
+    )
+
+    const authors = await mono.authors()
+    expect(authors.slice(-5)).toEqual(Array.from({length: 5}, () => 'Up Stream <up@example.test>'))
+    expect((await mono.messages()).at(-1)).toContain(`Monosplice-Origin: ${pubHead}`)
+
+    expect(await mono.treeSha('HEAD', 'core')).toBe(await pub.treeSha('HEAD'))
+    expect(await mono.git(['status', '--porcelain'])).toBe('')
+    expect((await runMonosplice(mono.dir, ['status'])).stdout).toMatch(/core: in sync/)
+    expect((await runMonosplice(mono.dir, ['push'])).stdout).toMatch(/up to date/)
+    expect(await pub.head()).toBe(pubHead)
+  })
+
+  it('refuses when the folder already has committed files, leaving the config byte-identical', async () => {
+    const {mono, pubDir} = await attachFixture({monoFiles: {'core/README.md': '# mono side\n'}})
+    const before = configBytes(mono)
+    const head = await mono.head()
+
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--history'])
+    expect(res.exitCode).not.toBe(0)
+    expect(res.stderr).toMatch(/--history/)
+    expect(res.stderr).toMatch(/already has committed files/)
+
+    expect(configBytes(mono).equals(before)).toBe(true)
+    expect(await mono.head()).toBe(head)
+  })
+})
+
+describe('S138: attach --fork refusals', () => {
+  it('refuses a fork url equal to the url being attached', async () => {
+    const {mono, pubDir} = await attachFixture()
+    const before = configBytes(mono)
+    const head = await mono.head()
+
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--fork', pubDir])
+    expect(res.exitCode).not.toBe(0)
+    expect(res.stderr).toMatch(/--fork/)
+    expect(res.stderr).toContain(pubDir)
+
+    expect(configBytes(mono).equals(before)).toBe(true)
+    expect(await mono.head()).toBe(head)
+    expect(mono.exists('core')).toBe(false)
+  })
+
+  it('refuses --fork on a folder that is already configured, naming the config edit', async () => {
+    const {mono, pubDir, root} = await attachFixture()
+    expect((await runMonosplice(mono.dir, ['attach', 'core', pubDir])).exitCode).toBe(0)
+    const forkDir = await makeBareRemote(root, 'core-fork')
+    const before = configBytes(mono)
+    const head = await mono.head()
+
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--fork', forkDir])
+    expect(res.exitCode).not.toBe(0)
+    expect(res.stderr).toMatch(/upstream/)
+    expect(res.stderr).toMatch(/monosplice\.config\.ts/)
+    expect(res.stderr).toContain(forkDir)
+
+    expect(configBytes(mono).equals(before)).toBe(true)
+    expect(await mono.head()).toBe(head)
+  })
+})
+
+describe('S139: write-access probe', () => {
+  it('says nothing when the remote accepts pushes', async () => {
+    const {mono, pubDir} = await attachFixture()
+
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(res.stderr).toBe('')
+  })
+
+  it('still attaches, but warns and names the --fork re-run when the remote refuses pushes', async () => {
+    const {mono, pub, pubDir, pubHead} = await attachFixture()
+    await denyPushes(pubDir)
+    const monoBefore = (await mono.subjects()).length
+
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir])
+    // Advisory only: the attach itself succeeded.
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(res.stderr).toMatch(/warning/i)
+    expect(res.stderr).toMatch(/monosplice attach core .*--fork/)
+    expect(res.stderr).toMatch(/monosplice push core/)
+
+    expect((await mono.subjects()).length).toBe(monoBefore + 1)
+    expect(await mono.treeSha('HEAD', 'core')).toBe(await pub.treeSha('HEAD'))
+    expect((await mono.messages()).at(-1)).toContain(`Monosplice-Origin: ${pubHead}`)
+    expect((await runMonosplice(mono.dir, ['status'])).stdout).toMatch(/core: in sync/)
+  })
+
+  it('does not probe when the remote is empty — the first publish proves write access itself', async () => {
+    const {mono, pubDir} = await attachFixture({emptyRemote: true, monoFiles: {'core/README.md': '# core\n'}})
+    await denyPushes(pubDir)
+
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--yes'])
+    // The real push fails, but it fails as a push error — never as the advisory.
+    expect(res.stderr).not.toMatch(/warning/i)
+  })
+})
+
+describe('S140: adopt and vendor are gone', () => {
+  for (const gone of ['adopt', 'vendor']) {
+    it(`\`monosplice ${gone}\` is an unknown command`, async () => {
+      const {mono} = await attachFixture()
+      const res = await runMonosplice(mono.dir, [gone])
+      expect(res.exitCode).not.toBe(0)
+      const out = `${res.stdout}\n${res.stderr}`.replace(/\s+/g, ' ')
+      expect(out).toMatch(new RegExp(`command ${gone} not found`, 'i'))
+    })
+  }
+
+  it('no user-facing string in the built CLI names either command', async () => {
+    const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../dist')
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const e of fs.readdirSync(dir, {withFileTypes: true})) {
+        const abs = path.join(dir, e.name)
+        if (e.isDirectory()) walk(abs)
+        else if (e.name.endsWith('.js')) {
+          const text = fs.readFileSync(abs, 'utf8')
+          for (const line of text.split('\n')) {
+            if (/monosplice (adopt|vendor)/.test(line)) offenders.push(`${abs}: ${line.trim()}`)
+          }
+        }
+      }
+    }
+    walk(dist)
+    expect(offenders).toEqual([])
+  })
+})
+
 describe('attach --help', () => {
   it('documents the flags', async () => {
     const {mono} = await attachFixture()
@@ -523,5 +669,7 @@ describe('attach --help', () => {
     expect(res.stdout).toMatch(/--branch/)
     expect(res.stdout).toMatch(/--theirs/)
     expect(res.stdout).toMatch(/--full-history/)
+    expect(res.stdout).toMatch(/--history/)
+    expect(res.stdout).toMatch(/--fork/)
   })
 })

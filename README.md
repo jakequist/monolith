@@ -13,8 +13,8 @@ monorepo stays a completely normal git repo; so does every repo spliced out of i
 open-source part of a larger codebase, to vendor a third-party project you patch, or to
 maintain a fork whose PR branch rebuilds itself.
 
-**Status: early, v0.x.** The core loop (push / pull / adopt / vendor / sync / status /
-doctor / tag) is covered by a black-box e2e suite, but the API and output are not frozen
+**Status: early, v0.x.** The core loop (attach / push / pull / sync / status / doctor /
+tag) is covered by a black-box e2e suite, but the API and output are not frozen
 yet. [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) lists exactly what is proven to work.
 
 ## Install
@@ -101,9 +101,7 @@ tree-transform hooks, the fork workflow: see [configuration & hooks](docs/refere
 | `monosplice pull [subrepo]` | Import new standalone-repo commits into the monorepo. `--continue` resumes after a conflict. |
 | `monosplice sync [subrepo]` | Pull, then push — converge both sides. |
 | `monosplice status [--json]` | Per-subrepo "N to push, M to pull", or "in sync". |
-| `monosplice adopt <subrepo>` | Connect a directory to a repo that already has history. |
-| `monosplice attach <folder> <git-url>` | Write the config entry for `<folder>` and make the right first move automatically (adopt, or a first publish). |
-| `monosplice vendor <git-url>` | Add a third-party repo as a tracked, patchable directory. `--fork` sets up the [fork workflow](docs/reference.md#pushing-patches-back-upstream-fork-workflow). |
+| `monosplice attach <folder> [git-url]` | Connect `<folder>` to a repo and make the right first move automatically. Writes the config entry when `<folder>` is new; drop the URL to make first contact for a folder that is already configured. `--history` replays the remote's commits instead of snapshotting; `--fork` sets up the [fork workflow](docs/reference.md#pushing-patches-back-upstream-fork-workflow). |
 | `monosplice doctor` | Verify the derived sync state against reality; non-zero exit on problems. |
 | `monosplice tag <subrepo> <tag>` | Tag the standalone repo at the commit matching monorepo HEAD. |
 | `monosplice update` | Self-update from npm. |
@@ -122,7 +120,7 @@ nothing exportable produce no commit on the other side.
 
 **There is no state file.** Nothing on disk records "where we got to". Every run re-derives
 both cursors from the trailers, and reflection is decided by *ancestry*, not by ticking off
-commits one at a time — which is why a one-commit `adopt` of a 200-commit repo reports "in
+commits one at a time — which is why a one-commit `attach` of a 200-commit repo reports "in
 sync" instead of "200 to pull". A fresh clone on a new machine can push, pull and sync
 immediately: no cache to invalidate, no lockfile to conflict on. And when the picture doesn't
 add up (shallow clone, rewritten history), monosplice stops and says so rather than guessing.
@@ -160,7 +158,7 @@ smaller case with a config file you can read in ten seconds.
 
 ## Going deeper
 
-- [Adopting an existing repo](docs/reference.md#adopting-an-existing-repo)
+- [Connecting a repo that already exists](docs/reference.md#connecting-a-repo-that-already-exists)
 - [Vendoring a third-party project](docs/reference.md#vendoring-a-third-party-project)
 - [Fork workflow — PRs back upstream](docs/reference.md#pushing-patches-back-upstream-fork-workflow)
 - [Configuration & hooks](docs/reference.md#configuration)

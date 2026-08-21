@@ -8,7 +8,7 @@ const UP_AUTHOR = {authorName: 'Lo Dash', authorEmail: 'lodash@example.test'}
 interface Fixture {
   root: string
   mono: TestRepo
-  /** Bare "lodash.git" acting as the third-party remote (its basename derives the name). */
+  /** Bare "lodash.git" acting as the third-party remote. */
   upDir: string
   up: TestRepo
   pub: TestRepo
@@ -17,7 +17,8 @@ interface Fixture {
 
 /**
  * A monorepo with NO subrepo configured at all, plus a separate third-party repo that has
- * its own history — the situation `vendor` exists for.
+ * its own history — the situation the retired `vendor` command existed for, now reached
+ * with `monosplice attach vendor/lodash <url>`.
  */
 async function vendorFixture(): Promise<Fixture> {
   const root = sandbox()
@@ -40,10 +41,10 @@ async function vendorFixture(): Promise<Fixture> {
   return {root, mono, upDir, up, pub, pubHead: await pub.head()}
 }
 
-/** Vendor the fixture's remote and assert it worked, so later scenarios start from sync. */
+/** Attach the fixture's remote and assert it worked, so later scenarios start from sync. */
 async function vendored(): Promise<Fixture> {
   const fx = await vendorFixture()
-  const res = await runMonosplice(fx.mono.dir, ['vendor', fx.upDir])
+  const res = await runMonosplice(fx.mono.dir, ['attach', 'vendor/lodash', fx.upDir])
   expect(res.exitCode, res.stderr).toBe(0)
   return fx
 }
@@ -52,20 +53,20 @@ function configBytes(mono: TestRepo): Buffer {
   return fs.readFileSync(path.join(mono.dir, 'monosplice.config.ts'))
 }
 
-describe('S100: vendor a third-party repo', () => {
+describe('S100: attach a third-party repo into vendor/', () => {
   it('creates the tree and the config entry in ONE commit and lands in sync', async () => {
     const {mono, pub, upDir, pubHead} = await vendorFixture()
     const monoBefore = (await mono.subjects()).length
 
-    const res = await runMonosplice(mono.dir, ['vendor', upDir])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', upDir])
     expect(res.exitCode, res.stderr).toBe(0)
-    expect(res.stdout).toContain('✓ vendored lodash at vendor/lodash')
+    expect(res.stdout).toContain('✓ attached lodash at vendor/lodash')
     expect(res.stdout).toContain(`${upDir}#main`)
-    expect(res.stdout).toMatch(/monosplice pull/)
+    expect(res.stdout).toMatch(/push and pull/)
 
     const subjects = await mono.subjects()
     expect(subjects).toHaveLength(monoBefore + 1)
-    expect(subjects[subjects.length - 1]).toBe(`Vendor lodash from ${upDir} @ ${pubHead.slice(0, 10)}`)
+    expect(subjects[subjects.length - 1]).toBe(`Adopt lodash from ${upDir} @ ${pubHead.slice(0, 10)}`)
 
     const messages = await mono.messages()
     expect(messages[messages.length - 1]).toContain(`Monosplice-Origin: ${pubHead}`)
@@ -101,24 +102,23 @@ describe('S100: vendor a third-party repo', () => {
     expect(await pub.head()).toBe(pubHead)
   })
 
-  it('honors --path, --name and --branch', async () => {
+  it('honors an explicit folder, --name and --branch', async () => {
     const {mono, up, upDir} = await vendorFixture()
     await up.git(['checkout', '-b', 'release'])
     await up.commit('lodash: release only', {'release.txt': 'r\n'}, UP_AUTHOR)
     await up.git(['push', 'origin', 'release'])
 
     const res = await runMonosplice(mono.dir, [
-      'vendor',
-      upDir,
-      '--path',
+      'attach',
       'third_party/lodash-lib',
+      upDir,
       '--name',
       'ld',
       '--branch',
       'release',
     ])
     expect(res.exitCode, res.stderr).toBe(0)
-    expect(res.stdout).toContain('✓ vendored ld at third_party/lodash-lib')
+    expect(res.stdout).toContain('✓ attached ld at third_party/lodash-lib')
     expect(mono.exists('third_party/lodash-lib/release.txt')).toBe(true)
 
     const config = mono.read('monosplice.config.ts')
@@ -130,7 +130,7 @@ describe('S100: vendor a third-party repo', () => {
   })
 })
 
-describe('S101: upstream advances after vendoring', () => {
+describe('S101: upstream advances after attaching', () => {
   it('imports the new commits into vendor/<name>/ per-commit with authors preserved', async () => {
     const {mono, up} = await vendored()
 
@@ -222,16 +222,29 @@ describe('S103: local patch conflicting with an upstream edit', () => {
   })
 })
 
-describe('S104: vendoring the same repo twice', () => {
+describe('S104: attaching the same repo twice', () => {
   it('refuses on the name/path collision leaving the config byte-identical', async () => {
-    const {mono, upDir} = await vendored()
+    const {mono, root, upDir} = await vendored()
     const before = configBytes(mono)
     const logBefore = await mono.subjects()
 
-    const again = await runMonosplice(mono.dir, ['vendor', upDir])
+    // Same folder, same url: the entry now exists, so this is first contact — and the two
+    // are already connected by trailers.
+    const again = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', upDir])
     expect(again.exitCode).not.toBe(0)
-    expect(again.stderr).toMatch(/lodash/)
     expect(again.stderr).toMatch(/already/i)
+
+    // A different folder under the same name is a plain slot collision.
+    const other = await makeBareRemote(root, 'other')
+    const src = await makeRepo(root, 'other-src')
+    await src.commit('other: initial', {'a.txt': 'a\n'}, UP_AUTHOR)
+    await src.git(['remote', 'add', 'origin', other])
+    await src.git(['push', 'origin', 'main'])
+
+    const collide = await runMonosplice(mono.dir, ['attach', 'vendor/other', other, '--name', 'lodash'])
+    expect(collide.exitCode).not.toBe(0)
+    expect(collide.stderr).toMatch(/lodash/)
+    expect(collide.stderr).toMatch(/already/i)
 
     expect(configBytes(mono).equals(before)).toBe(true)
     expect(await mono.subjects()).toEqual(logBefore)
@@ -247,21 +260,22 @@ describe('S104: vendoring the same repo twice', () => {
     await src.git(['push', 'origin', 'main'])
     const before = configBytes(mono)
 
-    const res = await runMonosplice(mono.dir, ['vendor', other, '--path', 'vendor/lodash'])
+    // The path resolves to the configured `lodash` entry, so this is the repoint refusal.
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', other])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/vendor\/lodash/)
     expect(configBytes(mono).equals(before)).toBe(true)
   })
 })
 
-describe('S105: vendor preconditions', () => {
+describe('S105: attach preconditions on a new entry', () => {
   it('refuses a dirty working tree before fetching or writing anything', async () => {
     const {mono, upDir} = await vendorFixture()
     mono.write('app/main.ts', 'export const app = "wip"\n')
     const before = configBytes(mono)
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['vendor', upDir])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', upDir])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/uncommitted|staged/i)
 
@@ -278,7 +292,7 @@ describe('S105: vendor preconditions', () => {
     const before = configBytes(mono)
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['vendor', upDir])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', upDir])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/staged|uncommitted/i)
     expect(configBytes(mono).equals(before)).toBe(true)
@@ -286,16 +300,16 @@ describe('S105: vendor preconditions', () => {
     expect(await mono.git(['diff', '--cached', '--name-only'])).toBe('private/secrets.md')
   })
 
-  it('refuses when a directory already exists at the target path', async () => {
+  it('refuses an untracked directory sitting at the target path', async () => {
     const {mono, upDir} = await vendorFixture()
     mono.write('vendor/lodash/leftover.txt', 'from a previous attempt\n')
     const before = configBytes(mono)
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['vendor', upDir])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', upDir])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/vendor\/lodash/)
-    expect(res.stderr).toMatch(/exists|--path/)
+    expect(res.stderr).toMatch(/exists/)
 
     expect(configBytes(mono).equals(before)).toBe(true)
     expect(await mono.head()).toBe(head)
@@ -312,7 +326,7 @@ describe('S105: vendor preconditions', () => {
     await src.git(['push', 'origin', 'main'])
     const before = configBytes(mono)
 
-    const res = await runMonosplice(mono.dir, ['vendor', other, '--path', 'vendor/lodash/inner'])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash/inner', other])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/nest/i)
     expect(configBytes(mono).equals(before)).toBe(true)
@@ -325,7 +339,7 @@ describe('S106: unreachable remote or missing branch', () => {
     const before = configBytes(mono)
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['vendor', `${root}/gone.git`])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', `${root}/gone.git`])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('cannot reach remote')
     expect(res.stderr).toContain('gone.git')
@@ -340,7 +354,7 @@ describe('S106: unreachable remote or missing branch', () => {
     const before = configBytes(mono)
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['vendor', upDir, '--branch', 'nope'])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', upDir, '--branch', 'nope'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('nope')
     expect(res.stderr).toContain(upDir)
@@ -362,7 +376,7 @@ describe('S107: a config shape the inserter cannot handle', () => {
     const before = configBytes(mono)
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['vendor', upDir])
+    const res = await runMonosplice(mono.dir, ['attach', 'vendor/lodash', upDir])
     expect(res.exitCode).not.toBe(0)
 
     expect(res.stdout).toContain(`path: 'vendor/lodash'`)
@@ -373,22 +387,5 @@ describe('S107: a config shape the inserter cannot handle', () => {
     expect(await mono.head()).toBe(head)
     expect(mono.exists('vendor')).toBe(false)
     expect(await mono.git(['status', '--porcelain'])).toBe('')
-  })
-})
-
-describe('vendor name derivation', () => {
-  it('strips the .git suffix from a plain filesystem path', async () => {
-    const {mono, upDir} = await vendorFixture()
-    const res = await runMonosplice(mono.dir, ['vendor', upDir])
-    expect(res.exitCode, res.stderr).toBe(0)
-    expect(mono.exists('vendor/lodash/index.js')).toBe(true)
-  })
-
-  it('renders --help', async () => {
-    const {mono} = await vendorFixture()
-    const res = await runMonosplice(mono.dir, ['vendor', '--help'])
-    expect(res.exitCode).toBe(0)
-    expect(res.stdout).toMatch(/--path/)
-    expect(res.stdout).toMatch(/--branch/)
   })
 })

@@ -37,6 +37,7 @@ export default class Init extends Command {
     fs.writeFileSync(target, TEMPLATE)
     this.log(`Created ${target}`)
     this.log('Add your subrepos to the config, then run `monosplice push <name>` to publish one')
-    this.log('(or `monosplice adopt <name>` if the remote already has history).')
+    this.log('(or skip the hand-editing: `monosplice attach <folder> <git-url>` writes the entry and')
+    this.log('makes first contact for you, whichever side already has content).')
   }
 }

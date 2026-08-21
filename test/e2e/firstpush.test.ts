@@ -135,7 +135,7 @@ describe('S04: first push honors exclude patterns', () => {
 })
 
 describe('S05: push against a pub with unrelated history', () => {
-  it('refuses, points at `monosplice adopt`, and leaves the remote untouched', async () => {
+  it('refuses, points at `monosplice attach`, and leaves the remote untouched', async () => {
     const {root, mono, pubDir} = await standardFixture()
 
     const ext = await makeRepo(root, 'ext')
@@ -149,7 +149,7 @@ describe('S05: push against a pub with unrelated history', () => {
     for (const args of [['push'], ['push', 'core', '--yes']]) {
       const res = await runMonosplice(mono.dir, args)
       expect(res.exitCode, `${args.join(' ')} should have failed`).not.toBe(0)
-      expect(res.stderr).toMatch(/monosplice adopt core/)
+      expect(res.stderr).toMatch(/monosplice attach core/)
       expect(await pub.head()).toBe(before)
       expect(await pub.subjects()).toEqual(['external: hello'])
     }
@@ -269,7 +269,7 @@ describe('S99: empty subrepo dir and empty remote', () => {
   it('gives the same "nothing exists yet" error from every command', async () => {
     const {mono} = await deadEndFixture()
 
-    for (const args of [['push', 'core', '--yes'], ['push'], ['pull'], ['sync'], ['adopt', 'core']]) {
+    for (const args of [['push', 'core', '--yes'], ['push'], ['pull'], ['sync'], ['attach', 'core']]) {
       const res = await runMonosplice(mono.dir, args)
       expect(res.exitCode, `${args.join(' ')} should have failed`).not.toBe(0)
       expect(res.stderr, args.join(' ')).toMatch(/nothing exists yet/i)

@@ -1,39 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import type {ResolvedSubrepo} from '../../src/config.js'
-import {checkFreeSlot, deriveVendorName, insertSubrepoEntry, renderSubrepoEntry} from '../../src/core/vendor.js'
-
-describe('deriveVendorName', () => {
-  it('takes the repo basename from every URL form monosplice is likely to see', () => {
-    expect(deriveVendorName('git@github.com:lodash/lodash.git')).toBe('lodash')
-    expect(deriveVendorName('https://github.com/lodash/lodash.git')).toBe('lodash')
-    expect(deriveVendorName('https://github.com/lodash/lodash')).toBe('lodash')
-    expect(deriveVendorName('ssh://git@github.com:2222/lodash/lodash.git')).toBe('lodash')
-    expect(deriveVendorName('file:///srv/mirrors/lodash.git')).toBe('lodash')
-    expect(deriveVendorName('/srv/mirrors/lodash.git')).toBe('lodash')
-    expect(deriveVendorName('../siblings/lodash')).toBe('lodash')
-  })
-
-  it('handles scp syntax with no path, trailing slashes, fragments and whitespace', () => {
-    expect(deriveVendorName('git@github.com:lodash.git')).toBe('lodash')
-    expect(deriveVendorName('https://github.com/lodash/lodash.git/')).toBe('lodash')
-    expect(deriveVendorName('  https://github.com/lodash/lodash.git  ')).toBe('lodash')
-    expect(deriveVendorName('https://github.com/lodash/lodash.git#main')).toBe('lodash')
-  })
-
-  it('keeps a name that only looks like a suffix, and is case-insensitive about .git', () => {
-    expect(deriveVendorName('https://github.com/x/gitignore.git')).toBe('gitignore')
-    expect(deriveVendorName('https://github.com/x/lodash.GIT')).toBe('lodash')
-    expect(deriveVendorName('https://github.com/x/dot.files.git')).toBe('dot.files')
-  })
-
-  it('refuses to guess when there is no usable segment', () => {
-    expect(deriveVendorName('')).toBeNull()
-    expect(deriveVendorName('/')).toBeNull()
-    expect(deriveVendorName('https://github.com/x/.git')).toBeNull()
-    expect(deriveVendorName('/srv/mirrors/../.git')).toBeNull()
-    expect(deriveVendorName('git@github.com:owner/we ird.git')).toBeNull()
-  })
-})
+import {checkFreeSlot, insertSubrepoEntry, renderSubrepoEntry} from '../../src/core/vendor.js'
 
 describe('renderSubrepoEntry', () => {
   it('omits name and branch when they equal what the loader would default to', () => {

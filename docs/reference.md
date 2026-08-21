@@ -4,75 +4,82 @@ The [README](../README.md) covers the quickstart and the core model. This is the
 reference for everything else: connecting repos that already exist, vendoring and the fork
 workflow, the full configuration surface, conflicts, and releasing.
 
-## Adopting an existing repo
+## Connecting a repo that already exists
 
-First contact is detected, never configured. monosplice looks at two things — whether the
-subrepo directory has committed content, and whether the remote branch exists — and there is
-exactly one right move for each combination:
+`monosplice attach` is the one command for first contact, whichever side already has
+something. First contact itself is detected, never configured: monosplice looks at two things
+— whether the folder has committed content, and whether the remote branch exists — and there
+is exactly one right move for each combination.
 
-| `path/` in the monorepo | remote branch | What to run | What happens |
-| --- | --- | --- | --- |
-| has content | empty | `monosplice push <name>` (`--yes` in scripts) | Publishes the current tree as one `Initial import of <name>` commit. `--full-history` replays every commit that touched the directory instead. |
-| empty / absent | has history | `monosplice adopt <name>` | Materializes the remote's HEAD tree at `path/` in **one** monorepo commit. `--history` replays every public commit instead, authors and messages preserved. |
-| has content | has history | `monosplice adopt <name>` | Only if the two trees already match — that records the baseline as an empty commit. Otherwise monosplice lists the differing paths and stops; `--theirs` replaces `path/` with the remote tree in one commit. |
-| empty / absent | empty | — | Nothing exists yet. Commit something, or point `remote` at a repo that has content. |
+```sh
+monosplice attach core git@github.com:you/core.git   # folder not in your config yet
+monosplice attach core                               # folder already in your config
+```
+
+With a URL, `attach` writes the `subrepos` entry for `<folder>` into your
+`monosplice.config.ts` first. Without one, `<folder>` must already match a configured
+subrepo — by path or by name — and nothing is written to the config at all; only first
+contact is made. Either way the move is the same:
+
+| `path/` in the monorepo | remote branch | What happens |
+| --- | --- | --- |
+| empty / absent | has history | Materializes the remote's HEAD tree at `path/` in **one** monorepo commit (`Adopt <name> from …`, carrying `Monosplice-Origin`). `--history` replays every public commit instead, authors and messages preserved. |
+| has content | has history | Only if the two trees already match — that records the baseline as an empty commit. Otherwise monosplice lists the differing paths and stops; `--theirs` replaces `path/` with the remote tree in one commit. |
+| has content | empty | The first publish, confirmation-gated: a prompt at a terminal, `--yes` in scripts. Publishes the current tree as one `Initial import of <name>` commit; `--full-history` replays every commit that touched the directory instead. |
+| empty / absent | empty | Nothing exists yet. Commit something, or point the URL at a repo that has content. |
 
 ```sh
 # a repo with 200 commits of its own history, no core/ in the monorepo yet
-monosplice adopt core             # one commit: "Adopt core from …@ 9f2c1ab0e4"
-monosplice adopt core --history   # …or replay all 200 into core/
+monosplice attach core git@github.com:you/core.git             # one commit: "Adopt core from …@ 9f2c1ab0e4"
+monosplice attach core git@github.com:you/core.git --history   # …or replay all 200 into core/
 ```
 
-Either way the adopt commit carries `Monosplice-Origin: <pub-sha>`, which is what makes
+When the folder is new, the config entry and the tree land in the **same** commit — the
+anchor and the entry that gives it meaning belong together. The two exceptions commit the
+entry on its own first, because what follows cannot share a commit with it: `--history`
+(each replayed commit is its own) and a first publish (which asks before writing to the
+remote, and the entry must survive a "no").
+
+Either way the anchor commit carries `Monosplice-Origin: <pub-sha>`, which is what makes
 `status` say "in sync" immediately: the remote history is reflected by ancestry, not by
-importing it commit by commit. Everything before the adopt commit stays in your monorepo
-history and is never exported — the next `push` publishes only genuinely new work, parented
-on the remote's existing head.
+importing it commit by commit. Everything before it stays in your monorepo history and is
+never exported — the next `push` publishes only genuinely new work, parented on the remote's
+existing head.
+
+`--name` defaults to the last segment of `<folder>`, `--branch` to `main`; on an
+already-configured folder both are refused rather than silently ignored, and so is a URL that
+disagrees with the configured `remote`. Every refusal — name or path already configured,
+nesting, a dirty tree, a pull in progress, an unreachable URL, differing trees — leaves the
+config byte-identical and makes no commit.
 
 `push` and `pull` refuse to guess. Pointed at a remote whose history is unrelated to the
-monorepo, both stop and tell you to run `adopt`; run `adopt` on a pair that is already
-connected and it stops too.
+monorepo, both stop and tell you to run `attach`; run `attach` on a pair that is already
+connected by trailers and it stops too.
 
-### `attach`: the whole table in one command
+### Can you actually push there?
 
-`adopt` and `push` both assume the subrepo is already in your config. `monosplice attach
-<folder> <git-url>` writes that entry for you and then makes the move the table above
-prescribes, without you having to work out which row you are on:
-
-```sh
-monosplice attach core git@github.com:you/core.git
-```
-
-- Remote has history, `core/` is empty → one commit carrying the config entry *and* the
-  remote tree, anchored with `Monosplice-Origin`. In sync immediately.
-- Remote has history, `core/` has content → the same single commit when the trees match;
-  otherwise monosplice lists the differing paths and stops. `--theirs` takes the remote tree.
-- Remote is empty, `core/` has content → the config entry is committed on its own, then the
-  first publish asks before writing to the remote. Use `--yes` in scripts (`--full-history`
-  replays every commit that touched the folder). Without confirmation the config commit still
-  lands and monosplice names `monosplice push <name> --yes`.
-- Both empty → nothing exists yet; the config is left untouched.
-
-`--name` defaults to the last segment of `<folder>`, `--branch` to `main`. Every refusal —
-name or path already configured, nesting, a dirty tree, a pull in progress, an unreachable
-URL — leaves the config byte-identical and makes no commit.
+Attaching proves you can *read* the remote. Writing to it needs rights nothing so far has
+exercised, so after a successful attach to a remote that has history monosplice runs a
+harmless `git push --dry-run` of the remote's own head back at it. If that is refused, the
+attach still stands (exit 0 — the anchor commit is real and `pull` works), and monosplice
+prints an advisory naming the fork setup to use instead. It never blocks, and it is skipped
+where it would be meaningless: with `--fork`, or when the remote was empty and the first
+publish proved write access by doing it.
 
 ## Vendoring a third-party project
 
-`adopt` connects a subrepo you already configured. `vendor` is the sugar for the case where
-you have nothing yet: a third-party repo you want *inside* your monorepo, tracked, patchable,
-and still able to take upstream updates.
+The same command covers a third-party repo you want *inside* your monorepo — tracked,
+patchable, and still able to take upstream updates. The `vendor/` prefix is pure convention:
 
 ```sh
-monosplice vendor git@github.com:lodash/lodash.git
-# ✓ vendored lodash at vendor/lodash (tracking git@github.com:lodash/lodash.git#main)
+monosplice attach vendor/lodash git@github.com:lodash/lodash.git
+# ✓ attached lodash at vendor/lodash (tracking git@github.com:lodash/lodash.git#main)
 ```
 
-One command, one commit. It derives the name from the URL (`lodash`), picks
-`vendor/lodash` as the path, writes the entry into your `monosplice.config.ts`, materializes
-lodash's current tree at that path, and commits the config change and the tree **together**,
-with a `Monosplice-Origin` trailer anchoring the pair. `--path`, `--name` and `--branch`
-override the defaults.
+One command, one commit: the entry goes into your `monosplice.config.ts`, lodash's current
+tree is materialized at `vendor/lodash/`, and both are committed **together** with a
+`Monosplice-Origin` trailer anchoring the pair. The subrepo name defaults to the last path
+segment (`lodash`); `--name` and `--branch` override the defaults.
 
 From then on it is a normal subrepo. Patch it like any other directory in your monorepo:
 
@@ -110,7 +117,12 @@ Set `upstream` and the subrepo becomes triangular: monosplice **pulls from upstr
 }
 ```
 
-`monosplice vendor <upstream-url> --fork <fork-url>` writes that entry for you.
+`monosplice attach vendor/lodash <upstream-url> --fork <fork-url>` writes that entry for you,
+then attaches against **upstream** — the tree, the anchor and every later sync decision come
+from there, and the fork is only ever written to by `push`. `--fork` must differ from the URL
+you are attaching, and it only applies to a folder that is not configured yet: on an existing
+entry monosplice tells you to add `upstream` to the config instead of guessing which of the
+two remotes you meant to keep.
 
 The loop:
 
@@ -151,8 +163,9 @@ Two notes on the config edit. monosplice inserts the entry textually into the `s
 array, then **reloads your config through the real loader** and checks the new entry resolves;
 if the file cannot be parsed that way — because your `subrepos` is built from a spread, an
 import, or a function call — it restores the original bytes byte-for-byte, makes no commit,
-and prints the entry for you to paste in yourself. And `vendor` refuses to start unless the
-working tree is clean and the target path is empty, because it commits the index.
+and prints the entry for you to paste in yourself, naming the `monosplice attach <folder>`
+that finishes the job once you have. And `attach` refuses to start unless the working tree is
+clean, because it commits the index.
 
 ## Configuration
 
