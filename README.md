@@ -2,7 +2,7 @@
 
 Keep your work in one private monorepo, and publish some of its directories as real, standalone open-source repositories. `monolith` replays commits across that boundary in both directions — your `core/` directory becomes the root of a public repo, external contributions come back into `core/` — with per-commit fidelity, configurable secret scanning and tree transforms, and no submodules, no gitlinks, and no state file to keep in sync. Your monorepo stays a completely normal git repo; the public repos stay completely normal git repos; monolith is the thing that moves commits between them.
 
-**Status: early. v0.x.** The core sync loop (push / pull / adopt / sync / status / doctor / tag) is covered by a black-box e2e suite, but the API and output are not frozen yet, and it has not been battle-tested across many repos. Read [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) to see exactly what is proven to work.
+**Status: early. v0.x.** The core sync loop (push / pull / adopt / vendor / sync / status / doctor / tag) is covered by a black-box e2e suite, but the API and output are not frozen yet, and it has not been battle-tested across many repos. Read [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) to see exactly what is proven to work.
 
 ## Install
 
@@ -117,6 +117,56 @@ on the public repo's existing head.
 monorepo, both stop and tell you to run `adopt`; run `adopt` on a pair that is already
 connected and it stops too.
 
+## Vendoring a third-party project
+
+`adopt` connects a subrepo you already configured. `vendor` is the sugar for the case where
+you have nothing yet: a third-party repo you want *inside* your monorepo, tracked, patchable,
+and still able to take upstream updates.
+
+```sh
+monolith vendor git@github.com:lodash/lodash.git
+# ✓ vendored lodash at vendor/lodash (tracking git@github.com:lodash/lodash.git#main)
+```
+
+One command, one commit. It derives the name from the URL (`lodash`), picks
+`vendor/lodash` as the path, writes the entry into your `monolith.config.ts`, materializes
+lodash's current tree at that path, and commits the config change and the tree **together**,
+with a `Monolith-Origin` trailer anchoring the pair. `--path`, `--name` and `--branch`
+override the defaults.
+
+From then on it is a normal subrepo. Patch it like any other directory in your monorepo:
+
+```sh
+git commit -am "fix(lodash): guard against a null prototype"
+```
+
+and take upstream updates whenever you like:
+
+```sh
+monolith pull lodash    # replays new upstream commits into vendor/lodash/
+```
+
+Your patch and upstream's commits are three-way merged, so an upstream change to a different
+file lands silently and your patch survives. When upstream edits the same lines you did, you
+get the standard conflict flow — markers in `vendor/lodash/`, resolve, `git add`,
+`monolith pull --continue` — and your resolution is preserved.
+
+**Pushing patches back upstream is not solved yet, and monolith does not pretend otherwise.**
+`remote` is currently both the pull source and the push destination, so a `monolith push
+lodash` after a local patch will try to write to lodash's own repository. Almost nobody has
+permission to do that, and the push fails loudly with git's own rejection before anything is
+recorded — a safe failure, but a failure. Until then, either don't push vendored subrepos, or
+point `remote` at your own fork and pull manually from upstream. The proper fix is a
+triangular setup — an `upstream` to pull from and a fork as `remote` to push PR branches to —
+tracked as the next phase in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) (S110–S118).
+
+Two notes on the config edit. monolith inserts the entry textually into the `subrepos: [`
+array, then **reloads your config through the real loader** and checks the new entry resolves;
+if the file cannot be parsed that way — because your `subrepos` is built from a spread, an
+import, or a function call — it restores the original bytes byte-for-byte, makes no commit,
+and prints the entry for you to paste in yourself. And `vendor` refuses to start unless the
+working tree is clean and the target path is empty, because it commits the index.
+
 ## Configuration
 
 `monolith.config.ts` sits at the root of your monorepo (`.mts`, `.js` and `.mjs` also work). It is loaded with [jiti](https://github.com/unjs/jiti), so TypeScript and ESM work with no build step.
@@ -209,6 +259,7 @@ Because the scan runs against every commit being exported — not just the final
 | --- | --- |
 | `monolith init` | Write a starter `monolith.config.ts` in the current directory. Running it again is a no-op. |
 | `monolith adopt <subrepo> [--history] [--theirs]` | Connect a subrepo to a public remote that already has history. Default records the remote's HEAD tree in one commit; `--history` replays every public commit; `--theirs` resolves the "both sides have content and disagree" case in favour of the remote. Refuses if the two are already connected. |
+| `monolith vendor <git-url> [--path <p>] [--name <n>] [--branch <b>]` | Add a third-party repo as a tracked subrepo. Writes the config entry and materializes the remote's tree at `vendor/<name>/` in one commit. Refuses (changing nothing) on a name/path collision, a dirty working tree, an occupied target path, an unreachable remote, or a config it cannot safely edit — in which case it prints the entry to paste yourself. |
 | `monolith push [subrepo] [--yes] [--full-history]` | Export new monorepo commits to the public remote(s). Defaults to every configured subrepo. On a subrepo's **first** push it asks before publishing — `--yes` answers that (required when there is no terminal), and `--full-history` replays every commit that touched the directory instead of publishing one baseline commit. One subrepo refusing does not stop the others; the run exits non-zero at the end. |
 | `monolith pull [subrepo] [--continue]` | Import new public commits into the monorepo. `--continue` finishes an import that stopped on a conflict, after you resolved it and ran `git add`. |
 | `monolith sync [subrepo]` | Pull, then push — converge both sides in one command. |

@@ -101,14 +101,14 @@ subrepo, `core/` = the configured subrepo path.
 
 ## Vendor
 
-- [ ] S100 `vendor <url>`: creates `vendor/<name>/` from the remote's HEAD tree, appends a valid entry to monolith.config.ts, and commits BOTH in a single commit carrying `Monolith-Origin: <pubHead>`; `status` in sync; `pull`/`push` up to date.
-- [ ] S101 Upstream advances → `pull` imports the new commits into `vendor/<name>/` per-commit.
-- [ ] S102 Local patch to a vendored file + upstream change to a different file → `pull` three-way merges cleanly; both changes present; `status` shows only the local patch as "to push".
-- [ ] S103 Local patch + upstream edit to the SAME line → conflict markers under `vendor/<name>/`, `pull --continue` completes, trees converge after push.
-- [ ] S104 `vendor` with a name or path already in config → refuses; config byte-identical, no commit created.
-- [ ] S105 `vendor` with a dirty working tree or existing directory at the target path → refuses before fetching or writing anything.
-- [ ] S106 `vendor` with an unreachable URL or missing branch → clean error; config untouched, no commit, no directory.
-- [ ] S107 Config-append safety: a monolith.config.ts whose shape the inserter can't parse → vendor makes NO changes and prints the exact config snippet to paste manually.
+- [x] S100 `vendor <url>`: creates `vendor/<name>/` from the remote's HEAD tree, appends a valid entry to monolith.config.ts, and commits BOTH in a single commit carrying `Monolith-Origin: <pubHead>`; `status` in sync; `pull`/`push` up to date. (`--path`/`--name`/`--branch` covered by the same describe.)
+- [x] S101 Upstream advances → `pull` imports the new commits into `vendor/<name>/` per-commit.
+- [x] S102 Local patch to a vendored file + upstream change to a different file → `pull` three-way merges cleanly; both changes present; nothing left to pull. Locked in by the test: `status` says **2** to push, not 1 — both sides moved, so the import sits on top of the local patch and its tree differs from the public tip, which is the same rule as S43. Pushing converges the trees.
+- [x] S103 Local patch + upstream edit to the SAME line → conflict markers under `vendor/<name>/`, `pull --continue` completes, trees converge after push.
+- [x] S104 `vendor` with a name or path already in config → refuses; config byte-identical, no commit created.
+- [x] S105 `vendor` with a dirty working tree, staged changes, an existing directory at the target path, or a path nesting inside a configured subrepo → refuses before fetching or writing anything.
+- [x] S106 `vendor` with an unreachable URL or missing branch → clean error; config untouched, no commit, no directory.
+- [x] S107 Config-append safety: a monolith.config.ts whose shape the inserter can't parse → vendor makes NO changes and prints the exact config snippet to paste manually (on stdout, exit ≠ 0).
 
 ## Triangular remotes (fork PR workflow)
 
