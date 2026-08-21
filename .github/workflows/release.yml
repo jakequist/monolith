@@ -42,8 +42,8 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           pnpm pack
-          cp "monolith-git-${version}.tgz" monolith-git.tgz
-          ls -l "monolith-git-${version}.tgz" monolith-git.tgz
+          cp "monolith-${version}.tgz" monolith.tgz
+          ls -l "monolith-${version}.tgz" monolith.tgz
 
       - name: Create the GitHub release
         env:
@@ -53,5 +53,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-            "monolith-git-${version}.tgz" \
-            monolith-git.tgz
+            "monolith-${version}.tgz" \
+            monolith.tgz

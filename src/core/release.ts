@@ -1,8 +1,11 @@
 /** GitHub repo that hosts the releases the CLI installs from. */
 export const RELEASE_REPO = 'jakequist/monolith'
 
-/** npm package name — the CLI is `monolith`, the package (and tarball) is not. */
-export const PACKAGE = 'monolith-git'
+/**
+ * Package and tarball name. Same as the binary — GitHub Releases is the only
+ * distribution channel, so there is no registry namespace to collide in.
+ */
+export const PACKAGE = 'monolith'
 
 export const RELEASES_PAGE = `https://github.com/${RELEASE_REPO}/releases`
 export const LATEST_RELEASE_API = `https://api.github.com/repos/${RELEASE_REPO}/releases/latest`

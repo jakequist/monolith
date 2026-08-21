@@ -33,7 +33,7 @@ describe('versionFromTag', () => {
 describe('releaseAssetUrl', () => {
   it('points at the versioned asset of that version’s release', () => {
     expect(releaseAssetUrl('1.2.3')).toBe(
-      'https://github.com/jakequist/monolith/releases/download/v1.2.3/monolith-git-1.2.3.tgz',
+      'https://github.com/jakequist/monolith/releases/download/v1.2.3/monolith-1.2.3.tgz',
     )
   })
 })

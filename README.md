@@ -7,18 +7,18 @@ Keep your work in one private monorepo, and publish some of its directories as r
 ## Install
 
 ```sh
-npm install -g https://github.com/jakequist/monolith/releases/latest/download/monolith-git.tgz
+npm install -g https://github.com/jakequist/monolith/releases/latest/download/monolith.tgz
 ```
 
 Releases are published as tarballs on [GitHub Releases](https://github.com/jakequist/monolith/releases), not to the npm registry — the URL above always points at the newest one. To pin a version, install its versioned asset instead:
 
 ```sh
-npm install -g https://github.com/jakequist/monolith/releases/download/v0.1.0/monolith-git-0.1.0.tgz
+npm install -g https://github.com/jakequist/monolith/releases/download/v0.1.1/monolith-0.1.1.tgz
 ```
 
 Once installed, `monolith update` self-updates from GitHub Releases (`monolith update --check` just reports installed vs. latest).
 
-Requires **Node ≥ 20** and **git ≥ 2.30**. The binary is called `monolith`; the package inside the tarball is `monolith-git`.
+Requires **Node ≥ 20** and **git ≥ 2.30**. The binary, package and tarball are all just `monolith` — GitHub Releases is the only distribution channel, so there is no npm-registry namespace to worry about. (Do not `npm install -g monolith` from the registry: that name belongs to an unrelated, long-dormant package. Always install from the release URL.)
 
 ## 60-second quickstart
 
@@ -31,7 +31,7 @@ Point it at a directory and an empty public repo:
 
 ```ts
 // monolith.config.ts
-import {defineConfig} from 'monolith-git'
+import {defineConfig} from 'monolith'
 
 export default defineConfig({
   subrepos: [
@@ -74,7 +74,7 @@ monolith tag core v1.0.0
 `monolith.config.ts` sits at the root of your monorepo (`.mts`, `.js` and `.mjs` also work). It is loaded with [jiti](https://github.com/unjs/jiti), so TypeScript and ESM work with no build step.
 
 ```ts
-import {defineConfig} from 'monolith-git'
+import {defineConfig} from 'monolith'
 
 export default defineConfig({
   subrepos: [
@@ -252,7 +252,7 @@ git commit -am "release: vX.Y.Z"
 git tag vX.Y.Z && git push origin main vX.Y.Z
 ```
 
-`.github/workflows/release.yml` then refuses the tag if it disagrees with `package.json`, runs `pnpm test:all`, packs the tarball, and creates the GitHub release with both assets: `monolith-git-X.Y.Z.tgz` (immutable, what `monolith update` installs) and `monolith-git.tgz` (the stable name behind the `/releases/latest/download/` install URL). `.github/workflows/ci.yml` runs `pnpm typecheck` and `pnpm test:all` on every push to `main` and every pull request.
+`.github/workflows/release.yml` then refuses the tag if it disagrees with `package.json`, runs `pnpm test:all`, packs the tarball, and creates the GitHub release with both assets: `monolith-X.Y.Z.tgz` (immutable, what `monolith update` installs) and `monolith.tgz` (the stable name behind the `/releases/latest/download/` install URL). `.github/workflows/ci.yml` runs `pnpm typecheck` and `pnpm test:all` on every push to `main` and every pull request.
 
 [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) is the living backlog. Every scenario has a stable ID (`S10`, `S42`, …) that its test name references, and items are checked off as their tests land. New behaviour starts as a new scenario there.
 
@@ -264,7 +264,7 @@ Not built yet, in rough order of usefulness:
 - **Branch export** — sync branches other than the configured one, so feature branches and release branches can be published too.
 - **A GitHub Action** — run `monolith sync` (or at least `monolith status`) in CI on a schedule.
 - **Standalone binaries** — `oclif pack` tarballs so the CLI can be installed without a Node toolchain.
-- **npm registry publish** — a `npm install -g monolith-git` convenience alongside the GitHub release tarballs.
+- **npm registry publish** — a registry convenience alongside the release tarballs would need a scoped name (`@jakequist/monolith`), since bare `monolith` is taken on the registry.
 
 ## License
 

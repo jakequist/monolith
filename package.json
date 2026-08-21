@@ -1,6 +1,6 @@
 {
-  "name": "monolith-git",
-  "version": "0.1.0",
+  "name": "monolith",
+  "version": "0.1.1",
   "description": "Ergonomic bidirectional sync between a private monorepo and public subrepos. Submodule accuracy without submodule pain.",
   "keywords": ["git", "monorepo", "subtree", "submodule", "open-source", "sync", "copybara"],
   "license": "MIT",
