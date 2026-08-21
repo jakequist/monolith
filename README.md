@@ -26,26 +26,53 @@ npm install -g monosplice
 Requires Node ≥ 20 and git ≥ 2.30. Prefer an install script or a pinned tarball? See
 [install options](docs/reference.md#install-options).
 
-## 60-second quickstart
+## Quickstart
+
+One-time setup, then pick the scenario that matches yours. Every path is the same command —
+`attach` connects a folder to a repo and makes the right first move for whatever state the
+two are in.
 
 ```sh
 cd ~/code/my-monorepo
-monosplice init                                      # writes monosplice.config.ts
-monosplice attach core git@github.com:you/core.git   # connect core/ to a repo
+monosplice init          # writes monosplice.config.ts
 ```
 
-`attach` writes the config entry and makes the right first contact on its own:
+### I have a monorepo and want to extract a subrepo
 
-- **The remote is empty** → it publishes `core/`'s current tree as the repo's first commit,
-  after asking (`--yes` in scripts, `--full-history` to replay every commit that ever
-  touched `core/`).
-- **The remote already has history** → it adopts: one commit connects the two, and `status`
-  reports "in sync" immediately.
-- **`core/` doesn't exist yet** → it materializes the remote's tree there, tracked and
-  patchable — which is how you vendor a third-party project:
-  `monosplice attach vendor/lodash git@github.com:lodash/lodash.git`.
+```sh
+monosplice attach core git@github.com:you/core.git
+# you/core.git (main) is empty. Publish core's current tree as its first public commit? [y/N]
+```
 
-Then just work in the monorepo as you always have:
+`core/`'s contents become the root of `you/core` in one baseline commit (`--yes` in
+scripts; `--full-history` replays every commit that ever touched `core/` instead).
+
+### I have a monorepo and want to import an external repo
+
+```sh
+monosplice attach packages/auth git@github.com:acme/auth.git
+```
+
+`packages/auth/` doesn't exist yet, so attach materializes the repo's tree there in one
+commit, anchored to the remote head — in sync immediately, with the remote's full history
+reflected by ancestry, not re-imported. (If `packages/auth/` *does* already have content,
+attach records the baseline when the trees match, and otherwise lists the differing files —
+`--theirs` takes the remote's version.)
+
+### I have a vendor repo and want to splice it
+
+```sh
+monosplice attach vendor/lodash git@github.com:lodash/lodash.git
+```
+
+The same move as importing — the `vendor/` prefix is just convention. From then on it's a
+normal directory: patch it in ordinary commits, and `monosplice pull lodash` three-way
+merges upstream updates underneath your patches. To send patches *back* to a project you
+can't push to, see the [fork workflow](docs/reference.md#pushing-patches-back-upstream-fork-workflow).
+
+### Then just work
+
+Whatever you attached, daily life is ordinary git plus one verb:
 
 ```sh
 git commit -am "feat(core): add the greeter"
