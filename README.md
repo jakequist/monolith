@@ -1,6 +1,4 @@
-# monosplice
-
-**What `git subtree` should have been.**
+# Monosplice - What git subtree should have been
 
 Keep everything in one monorepo. Splice any directory out as a real, standalone git
 repository, and let commits flow both ways — `push` exports your commits, `pull` replays
