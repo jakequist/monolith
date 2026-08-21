@@ -12,9 +12,9 @@
   .icon  { stroke:#57606a; fill:none; stroke-width:1.5; }
   .ticon { stroke:#1f2328; fill:none; stroke-width:2; }
   .conn  { stroke:#8c959f; fill:none; stroke-width:1.2; }
-  .arrg  { stroke:#2da44e; stroke-width:4; }
-  .arrb  { stroke:#1f6feb; stroke-width:4; }
-  .arro  { stroke:#f0883e; stroke-width:4; }
+  .arrg  { stroke:#2da44e; stroke-width:7; }
+  .arrb  { stroke:#1f6feb; stroke-width:7; }
+  .arro  { stroke:#f0883e; stroke-width:7; }
   .ahg   { fill:#2da44e; } .ahb { fill:#1f6feb; } .aho { fill:#f0883e; }
   .bdgbg { fill:#dafbe1; } .bdgtx { fill:#1a7f37; font-size:13.5px; font-weight:600; }
   .bdbbg { fill:#ddf4ff; } .bdbtx { fill:#0969da; font-size:13.5px; font-weight:600; }
@@ -56,13 +56,13 @@
     <ellipse cx="11" cy="11" rx="3.6" ry="8"/>
     <path d="M3,11 h16"/>
   </symbol>
-  <marker id="ah-arrg" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+  <marker id="ah-arrg" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
     <path d="M1,1 L11,6 L1,11 z" class="ahg"/>
   </marker>
-  <marker id="ah-arrb" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+  <marker id="ah-arrb" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
     <path d="M1,1 L11,6 L1,11 z" class="ahb"/>
   </marker>
-  <marker id="ah-arro" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+  <marker id="ah-arro" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
     <path d="M1,1 L11,6 L1,11 z" class="aho"/>
   </marker>
 </defs>
@@ -238,8 +238,8 @@
 <use href="#file" x="962" y="887" class="icon"/>
 <text x="988" y="901" class="tname">LICENSE</text>
 
-<line x1="636" y1="314" x2="884" y2="177" class="arrg" marker-start="url(#ah-arrg)" marker-end="url(#ah-arrg)"/>
-<line x1="636" y1="454" x2="884" y2="497" class="arrb" marker-start="url(#ah-arrb)" marker-end="url(#ah-arrb)"/>
-<line x1="636" y1="760" x2="884" y2="817" class="arro" marker-start="url(#ah-arro)" marker-end="url(#ah-arro)"/>
+<line x1="640" y1="314" x2="880" y2="177" class="arrg" marker-start="url(#ah-arrg)" marker-end="url(#ah-arrg)"/>
+<line x1="640" y1="454" x2="880" y2="497" class="arrb" marker-start="url(#ah-arrb)" marker-end="url(#ah-arrb)"/>
+<line x1="640" y1="760" x2="880" y2="817" class="arro" marker-start="url(#ah-arro)" marker-end="url(#ah-arro)"/>
 
 </svg>

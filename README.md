@@ -30,33 +30,20 @@ Requires Node ≥ 20 and git ≥ 2.30. Prefer an install script or a pinned tarb
 
 ```sh
 cd ~/code/my-monorepo
-monosplice init          # writes monosplice.config.ts
+monosplice init                                      # writes monosplice.config.ts
+monosplice attach core git@github.com:you/core.git   # connect core/ to a repo
 ```
 
-Point it at a directory and an empty repo:
+`attach` writes the config entry and makes the right first contact on its own:
 
-```ts
-// monosplice.config.ts
-import {defineConfig} from 'monosplice'
-
-export default defineConfig({
-  subrepos: [
-    {
-      name: 'core',
-      path: 'core',
-      remote: 'git@github.com:you/core.git',
-    },
-  ],
-})
-```
-
-Push once to publish `core/`'s current tree as the standalone repo's first commit
-(`--full-history` replays every commit that ever touched `core/` instead):
-
-```sh
-monosplice push core
-# core.git (main) is empty. Publish core's current tree as its first public commit? [y/N]
-```
+- **The remote is empty** → it publishes `core/`'s current tree as the repo's first commit,
+  after asking (`--yes` in scripts, `--full-history` to replay every commit that ever
+  touched `core/`).
+- **The remote already has history** → it adopts: one commit connects the two, and `status`
+  reports "in sync" immediately.
+- **`core/` doesn't exist yet** → it materializes the remote's tree there, tracked and
+  patchable — which is how you vendor a third-party project:
+  `monosplice attach vendor/lodash git@github.com:lodash/lodash.git`.
 
 Then just work in the monorepo as you always have:
 
@@ -75,9 +62,8 @@ monosplice pull     # replays it into core/, original author preserved
 monosplice sync     # pull then push, in one go
 ```
 
-If the standalone repo *already* has history, run `monosplice adopt` instead of pushing —
-one commit connects the two, and `status` reports "in sync" immediately. See
-[adopting an existing repo](docs/reference.md#adopting-an-existing-repo).
+The config file is still there when you need it — `exclude` globs, secret-scanning and
+tree-transform hooks, the fork workflow: see [configuration & hooks](docs/reference.md#configuration).
 
 ## Commands
 
