@@ -61,6 +61,31 @@ submodule-free ergonomics."
   runs the built CLI). `pnpm lint` / `pnpm typecheck`.
 - Config file is `monosplice.config.ts` loaded via jiti; `defineConfig()` provides types.
 
+## Releasing & repo operations
+
+- Repo: `github.com/jakequist/monosplice` (public; renamed from `monolith` — old URLs
+  redirect). Local checkout: `/home/jake/monosplice`.
+- **Distribution: npm is primary.** Package `monosplice`, published from CI via npm
+  **trusted publishing** (OIDC). There is NO npm token anywhere and there must never be —
+  do not add an `NPM_TOKEN` secret or `registry-url` to setup-node in release.yml (a
+  placeholder token in .npmrc shadows the OIDC exchange). The trusted publisher registered
+  on npmjs.com is exactly `release.yml` in this repo; renaming that file breaks publishing
+  until the registration is updated. GitHub Releases carries the same tarball
+  (`monosplice-X.Y.Z.tgz` + stable `monosplice.tgz`); `install.sh` wraps `npm install -g`.
+- **To release:** bump `version` in package.json, commit, `git tag vX.Y.Z`, push main + the
+  tag. release.yml verifies tag == package version, runs the full suite, packs, creates the
+  GitHub release, publishes to npm with provenance. Nothing is ever published by hand.
+- **If a release run fails partway, do NOT re-run it** — `gh release create` is not
+  idempotent and npm refuses to republish a version. Instead: fix the problem, then
+  `gh release delete vX.Y.Z --cleanup-tag --yes`, re-tag the fixed commit, push the tag.
+- The release job needs node ≥ 22 (`npm@latest` for OIDC dropped node 20 support) and
+  workflow-level `permissions: id-token: write`.
+- GitHub auth from this machine: `.env` (gitignored, never print/commit it) holds
+  `GH_TOKEN`. Load with `set -a; source .env; set +a` for `gh`; pushes work via
+  `git -c credential.helper='!f() { echo "username=jakequist"; echo "password=$GH_TOKEN"; }; f' push …`.
+- CI (`ci.yml`) runs typecheck + the full suite on every push/PR. Both workflows live in
+  `.github/workflows/`.
+
 ## TDD — non-negotiable
 
 This project is test-driven from day one. The workflow for every change:
