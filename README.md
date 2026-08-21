@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/jakequist/monosplice/main/install.s
 Every release is also attached as a tarball to [GitHub Releases](https://github.com/jakequist/monosplice/releases), useful for pinning an exact artifact:
 
 ```sh
-npm install -g https://github.com/jakequist/monosplice/releases/download/v0.3.0/monosplice-0.3.0.tgz
+npm install -g https://github.com/jakequist/monosplice/releases/download/v0.3.1/monosplice-0.3.1.tgz
 ```
 
 Once installed, `monosplice update` self-updates from npm (`monosplice update --check` just reports installed vs. latest).
