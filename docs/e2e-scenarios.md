@@ -125,3 +125,17 @@ subrepo, `core/` = the configured subrepo path.
 - [x] S116 PR merged upstream as a fast-forward/merge (exported commits with their `Monosplice-Source` trailers land in upstream) → `pull` is a no-op, fixed point holds.
 - [x] S117 PR squash-merged upstream (same tree, new commit, trailers lost) → `pull` records it (possibly as an empty import), `push` stays up to date; no ping-pong, trees converged.
 - [x] S118 `status`/`doctor` with `upstream`: ahead/behind measured against upstream; doctor fetches and reports both sides without false alarms.
+
+## Attach (one-command first contact)
+
+> `monosplice attach <folder> <repo-url>` — write the config entry connecting `<folder>` to
+> `<repo-url>`, then make the right first-contact move automatically. Sugar over
+> vendor/adopt/push; same detection matrix, same safety rails, zero hand-editing.
+
+- [ ] S120 `attach <folder> <url>` with no committed content at the folder and a remote that has history → ONE commit carrying both the config entry and the remote HEAD's tree at `<folder>`, with `Monosplice-Origin: <pubHead>`; `status` in sync; `pull`/`push` up to date. Works for nested paths (`packages/lib`). `--name`/`--branch` override the defaults (name defaults to the last path segment).
+- [ ] S121 `attach <folder> <url>` with committed content at the folder and an EMPTY remote → the config entry is committed on its own, then first-push semantics: `--yes` publishes the baseline (`--full-history` replays every commit that touched the folder); without `--yes` (non-interactive) the config commit still lands, the error names `monosplice push <name> --yes`, exit ≠ 0; running that push then converges.
+- [ ] S122 `attach` with committed content at the folder and a remote whose tree MATCHES → one commit: config entry + adopt baseline (`Monosplice-Origin`), in sync immediately; a later mono commit exports parented on the existing pub head.
+- [ ] S123 `attach` with committed content and a remote whose tree DIFFERS → refuses listing the differing paths; config byte-identical, no commit. `attach --theirs` takes the remote tree in the same single commit (config + tree + Origin trailer).
+- [ ] S124 `attach` refusals leave the config byte-identical and make no commit: name or path already configured, path nesting inside a configured subrepo, dirty working tree or staged changes, pull sequencer in progress.
+- [ ] S125 `attach` with an unreachable URL → clean error, nothing written. Folder empty AND remote empty → the shared "nothing exists yet" error, config untouched.
+- [ ] S126 `attach` on a config whose shape the inserter can't parse → NO changes, prints the exact snippet to paste (stdout, exit ≠ 0), and names the follow-up command per case (adopt for existing remote history, push --yes for empty remote).
