@@ -13,7 +13,7 @@ async function seededWithExternal(opts: {configExtra?: string} = {}): Promise<{
   ext: TestRepo
 }> {
   const {root, mono, pubDir} = await standardFixture(opts)
-  const res = await runMonolith(mono.dir, ['seed', 'core'])
+  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   const ext = await cloneRemote(root, pubDir, 'ext')
   return {root, mono, pub: new TestRepo(pubDir), pubDir, ext}
@@ -200,7 +200,7 @@ describe('doctor housekeeping', () => {
     const {mono} = await standardFixture()
     const doc = await runMonolith(mono.dir, ['doctor'])
     expect(doc.exitCode).toBe(1)
-    expect(doc.stdout).toMatch(/not seeded/)
-    expect(doc.stdout).toMatch(/monolith seed core/)
+    expect(doc.stdout).toMatch(/not published yet/)
+    expect(doc.stdout).toMatch(/monolith push core --yes/)
   })
 })

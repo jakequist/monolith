@@ -16,6 +16,20 @@ export class HookError extends Error {
 }
 
 /**
+ * Does the subrepo path hold any committed file at this revision? Deliberately unfiltered:
+ * "is there anything here at all" must be answerable before excludes or hooks get a say,
+ * so a broken hook can never masquerade as an empty directory.
+ */
+export async function hasCommittedFiles(
+  root: string,
+  rev: string,
+  subrepo: ResolvedSubrepo,
+): Promise<boolean> {
+  const out = await git(root, ['ls-tree', '-r', '--name-only', '-z', `${rev}:${subrepo.path}`]).catch(() => '')
+  return out !== ''
+}
+
+/**
  * Tree sha of `subrepo.path` at `monoCommit` after excludes and transform hooks,
  * or null when the path does not exist at that commit. Object-db only — the
  * working tree and index are never touched.

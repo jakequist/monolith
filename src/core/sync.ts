@@ -1,5 +1,15 @@
 import type {ResolvedSubrepo} from '../config.js'
-import {fetchBranch, lsRemoteBranch, missingObjects, revList, revParse, trailerValues} from './git.js'
+import {filteredSubtree} from './filter.js'
+import {
+  existingCommits,
+  fetchBranch,
+  git,
+  lsRemoteBranch,
+  missingObjects,
+  revList,
+  revParse,
+  trailerValues,
+} from './git.js'
 import {ORIGIN_TRAILER, SOURCE_TRAILER} from './trailers.js'
 
 /** Where a subrepo's public branch is mirrored inside the monorepo's object db. */
@@ -23,47 +33,144 @@ export interface SyncView {
   /** Public shas already imported into the monorepo, from `Monolith-Origin` trailers on HEAD. */
   importedPubShas: Set<string>
   /**
-   * Newest monorepo commit that pub history claims to have exported and that still
-   * exists locally. Export scans `exportBaseMono..HEAD`; null means "scan all of HEAD".
+   * Where the export scan starts: the newest commit on the HEAD walk that is either already
+   * exported (`Monolith-Source` names it) or anchors the monorepo to the public branch
+   * (`Monolith-Origin` naming pub head or one of its ancestors). Export scans
+   * `exportBase..HEAD`; null means "scan all of HEAD" (nothing published yet).
    */
-  exportBaseMono: string | null
-  /** Public commits that are neither our exports nor already imported (oldest first). */
+  exportBase: string | null
+  /**
+   * Newest monorepo commit that pub history claims to have exported and that still exists
+   * locally. Not the scan base — its job is rewrite detection: a commit that was rebased away
+   * lives on in the reflog but is absent from the HEAD walk, so `exportBase` cannot see it.
+   */
+  lastExportedMono: string | null
+  /** Public commits that are neither our exports nor already reflected (oldest first). */
   unreflectedPub: string[]
   /**
    * `Monolith-Source` trailers in pub history naming monorepo commits that are not in
    * this clone. The mapping cannot be trusted while any exist, so export refuses.
    */
   brokenSourceRefs: BrokenSourceRef[]
+  /**
+   * Do the two repos know about each other at all? False means first contact: the public
+   * branch has history, but nothing on either side references the other, so the only safe
+   * move is `monolith adopt`.
+   */
+  related: boolean
+}
+
+/** The view of a subrepo whose public branch does not exist yet. */
+export function unpublishedView(name: string): SyncView {
+  return {
+    trackingRef: remoteTrackingRef(name),
+    pubHead: null,
+    exportedMonoToPub: new Map(),
+    importedPubShas: new Set(),
+    exportBase: null,
+    lastExportedMono: null,
+    unreflectedPub: [],
+    brokenSourceRefs: [],
+    related: false,
+  }
+}
+
+/**
+ * Does this monorepo commit reproduce, exactly, the public commit it claims to reflect?
+ * An `adopt` commit and a clean import do; a *conflicted* import and an import of a file the
+ * config excludes do not — they carry work the public branch has never seen, so they cannot
+ * be an export boundary. Hooks are allowed to throw here: an unusable filter simply means
+ * "not an anchor", and `push` reports the hook failure on its own terms.
+ */
+async function reflectsExactly(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  monoSha: string,
+  pubSha: string,
+): Promise<boolean> {
+  const monoTree = await filteredSubtree(root, monoSha, subrepo).catch(() => null)
+  if (monoTree === null) return false
+  return monoTree === (await git(root, ['rev-parse', `${pubSha}^{tree}`]).catch(() => null))
+}
+
+/**
+ * Walk monorepo history from HEAD and stop at the first commit whose publishable subtree the
+ * public branch already contains. Two ways to qualify: pub says it exported this commit
+ * (`Monolith-Source`), or the commit imported public work and reproduces it exactly
+ * (`Monolith-Origin`) — the second is what stops a `push` right after an `adopt` from
+ * replaying the monorepo's entire pre-adoption history onto the adopted repo.
+ *
+ * One `rev-list` for the walk, then O(1) lookups: both trailer maps are already in hand and
+ * `pubAncestors` is the pub-side walk this function's caller needed anyway, so an Origin
+ * candidate costs a set probe rather than a `merge-base` process.
+ */
+async function findExportAnchor(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  exportedMonoToPub: Map<string, string>,
+  originByMono: Map<string, string[]>,
+  pubAncestors: Set<string>,
+): Promise<{exportBase: string | null; related: boolean}> {
+  if (exportedMonoToPub.size === 0 && originByMono.size === 0) {
+    return {exportBase: null, related: false}
+  }
+
+  let related = exportedMonoToPub.size > 0
+  for (const monoSha of await revList(root, ['HEAD'])) {
+    if (exportedMonoToPub.has(monoSha)) return {exportBase: monoSha, related: true}
+    for (const pubSha of originByMono.get(monoSha) ?? []) {
+      if (!pubAncestors.has(pubSha)) continue
+      related = true
+      if (await reflectsExactly(root, subrepo, monoSha, pubSha)) return {exportBase: monoSha, related: true}
+    }
+  }
+  return {exportBase: null, related}
+}
+
+/**
+ * Public commits the monorepo has not seen. Ancestry, not per-commit bookkeeping: a shallow
+ * `adopt` records only the pub head as imported, and every ancestor of a reflected commit is
+ * reflected by construction. Our own exports drop out by trailer.
+ */
+async function findUnreflectedPub(
+  root: string,
+  trackingRef: string,
+  importedPubShas: Set<string>,
+  sourceByPub: Map<string, string[]>,
+): Promise<string[]> {
+  // A forged or force-pushed-away Origin value would abort the whole rev-list, so only
+  // values that resolve to a commit here are allowed to negate anything.
+  const reflected = await existingCommits(root, [...importedPubShas])
+  const args = ['rev-list', '--reverse', trackingRef]
+  let out: string
+  if (reflected.length === 0) {
+    out = await git(root, args)
+  } else {
+    // --stdin instead of argv: pub histories can carry thousands of reflected commits.
+    out = await git(root, [...args, '--stdin'], {input: reflected.map((sha) => `^${sha}\n`).join('')})
+  }
+  return out === '' ? [] : out.split('\n').filter((sha) => !sourceByPub.has(sha))
 }
 
 /**
  * Derive every sync cursor from trailers. There is no state file: this runs on each
  * invocation. `lsRemoteBranch` goes first so an unreachable remote fails with a GitError
- * carrying git's own stderr, and a missing branch is reported as "not seeded" rather than
- * as a confusing fetch failure.
+ * carrying git's own stderr, and a missing branch is reported as "not published yet" rather
+ * than as a confusing fetch failure.
  */
 export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Promise<SyncView> {
   const trackingRef = remoteTrackingRef(subrepo.name)
   const pubHead = await lsRemoteBranch(root, subrepo.remote, subrepo.branch)
 
+  const originByMono = (await revParse(root, 'HEAD'))
+    ? await trailerValues(root, ORIGIN_TRAILER, ['HEAD'])
+    : new Map<string, string[]>()
   const importedPubShas = new Set<string>()
-  if (await revParse(root, 'HEAD')) {
-    for (const values of (await trailerValues(root, ORIGIN_TRAILER, ['HEAD'])).values()) {
-      for (const v of values) importedPubShas.add(v)
-    }
+  for (const values of originByMono.values()) {
+    for (const v of values) importedPubShas.add(v)
   }
 
-  if (pubHead === null) {
-    return {
-      trackingRef,
-      pubHead: null,
-      exportedMonoToPub: new Map(),
-      importedPubShas,
-      exportBaseMono: null,
-      unreflectedPub: [],
-      brokenSourceRefs: [],
-    }
-  }
+  if (pubHead === null) return {...unpublishedView(subrepo.name), importedPubShas}
 
   await fetchBranch(root, subrepo.remote, subrepo.branch, trackingRef)
 
@@ -78,18 +185,24 @@ export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Prom
   const missing = await missingObjects(root, [...exportedMonoToPub.keys()])
   const brokenSourceRefs: BrokenSourceRef[] = []
 
-  let exportBaseMono: string | null = null
+  const pubAncestors = new Set<string>()
+  let lastExportedMono: string | null = null
   for (const pubSha of await revList(root, [trackingRef])) {
+    pubAncestors.add(pubSha)
     const values = sourceByPub.get(pubSha)
     if (!values) continue
     for (const monoSha of values) {
       if (missing.has(monoSha)) brokenSourceRefs.push({pubSha, monoSha})
-      else if (exportBaseMono === null) exportBaseMono = monoSha
+      else if (lastExportedMono === null) lastExportedMono = monoSha
     }
   }
 
-  const unreflectedPub = (await revList(root, ['--reverse', trackingRef])).filter(
-    (sha) => !sourceByPub.has(sha) && !importedPubShas.has(sha),
+  const {exportBase, related} = await findExportAnchor(
+    root,
+    subrepo,
+    exportedMonoToPub,
+    originByMono,
+    pubAncestors,
   )
 
   return {
@@ -97,8 +210,10 @@ export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Prom
     pubHead,
     exportedMonoToPub,
     importedPubShas,
-    exportBaseMono,
-    unreflectedPub,
+    exportBase,
+    lastExportedMono,
+    unreflectedPub: await findUnreflectedPub(root, trackingRef, importedPubShas, sourceByPub),
     brokenSourceRefs,
+    related,
   }
 }

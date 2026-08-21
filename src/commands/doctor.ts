@@ -87,16 +87,16 @@ export default class Doctor extends MonolithCommand {
 
     if (view.pubHead === null) {
       this.problem(
-        `not seeded — ${subrepo.remote} has no ${subrepo.branch} branch.`,
-        `Run \`monolith seed ${subrepo.name}\` to publish it for the first time.`,
+        `not published yet — ${subrepo.remote} has no ${subrepo.branch} branch.`,
+        `Run \`monolith push ${subrepo.name} --yes\` to publish it for the first time.`,
       )
       return null
     }
 
     this.log(`  pub head:      ${view.pubHead}`)
-    if (view.exportBaseMono) {
-      const pub = view.exportedMonoToPub.get(view.exportBaseMono) ?? '(unknown)'
-      this.log(`  last exported: mono ${view.exportBaseMono}`)
+    if (view.lastExportedMono) {
+      const pub = view.exportedMonoToPub.get(view.lastExportedMono) ?? '(unknown)'
+      this.log(`  last exported: mono ${view.lastExportedMono}`)
       this.log(`                 pub  ${pub}`)
     } else {
       this.log('  last exported: (nothing yet)')
@@ -116,7 +116,7 @@ export default class Doctor extends MonolithCommand {
 
     if (await exportBaseRewritten(root, view)) {
       this.problem(
-        `the last exported monorepo commit ${view.exportBaseMono} is no longer an ancestor of HEAD.`,
+        `the last exported monorepo commit ${view.lastExportedMono} is no longer an ancestor of HEAD.`,
         'Monorepo history was rewritten (rebase, amend or force-push) underneath it, so the export range',
         'is meaningless and `monolith push` will refuse.',
         'Restore that commit (see `git reflog`) or re-point the branch at history that contains it.',
@@ -147,18 +147,18 @@ export default class Doctor extends MonolithCommand {
 
   /** The cursor claims pub commit X exported mono commit Y; check the trees agree. */
   private async verifyMapping(root: string, subrepo: ResolvedSubrepo, view: SyncView): Promise<void> {
-    if (!view.exportBaseMono) return
-    const pubSha = view.exportedMonoToPub.get(view.exportBaseMono)
+    if (!view.lastExportedMono) return
+    const pubSha = view.exportedMonoToPub.get(view.lastExportedMono)
     if (!pubSha) return
 
     const [expected, actual] = await Promise.all([
-      filteredSubtree(root, view.exportBaseMono, subrepo).catch(() => null),
+      filteredSubtree(root, view.lastExportedMono, subrepo).catch(() => null),
       git(root, ['rev-parse', `${pubSha}^{tree}`]).catch(() => null),
     ])
     if (expected === null || actual === null || expected === actual) return
 
     this.note(
-      `pub commit ${pubSha} does not match the subtree monolith would export from ${view.exportBaseMono} today.`,
+      `pub commit ${pubSha} does not match the subtree monolith would export from ${view.lastExportedMono} today.`,
       'That is expected if `exclude`, `transform` or `rewriteMessage` changed since that export — the next',
       `\`monolith push ${subrepo.name}\` republishes with the current config. If nothing changed, the public`,
       'branch was probably rewritten.',

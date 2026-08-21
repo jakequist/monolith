@@ -101,7 +101,7 @@ export default class Status extends MonolithCommand {
 
   private describe(row: SubrepoStatus): void {
     if (!row.seeded) {
-      this.log(`${row.name}: not seeded (run \`monolith seed ${row.name}\`)`)
+      this.log(`${row.name}: not published yet (run \`monolith push ${row.name} --yes\`)`)
     } else if (row.inSync) {
       this.log(`${row.name}: in sync`)
     } else {

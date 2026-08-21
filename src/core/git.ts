@@ -122,6 +122,23 @@ export async function missingObjects(cwd: string, shas: readonly string[]): Prom
   return missing
 }
 
+/**
+ * Which of these object ids name commits that really exist here. Same single batched
+ * `cat-file` as `missingObjects`; used to sanitize trailer values before feeding them to
+ * `rev-list`, where one unknown name would abort the whole query.
+ */
+export async function existingCommits(cwd: string, shas: readonly string[]): Promise<string[]> {
+  if (shas.length === 0) return []
+  const out = await git(cwd, ['cat-file', '--batch-check'], {input: shas.map((s) => `${s}\n`).join('')})
+  if (out === '') return []
+  const ok: string[] = []
+  for (const line of out.split('\n')) {
+    const [name, type] = line.split(' ')
+    if (name && type === 'commit') ok.push(name)
+  }
+  return ok
+}
+
 export interface CommitTreeInput {
   tree: string
   parents: string[]

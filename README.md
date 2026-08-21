@@ -2,7 +2,7 @@
 
 Keep your work in one private monorepo, and publish some of its directories as real, standalone open-source repositories. `monolith` replays commits across that boundary in both directions — your `core/` directory becomes the root of a public repo, external contributions come back into `core/` — with per-commit fidelity, configurable secret scanning and tree transforms, and no submodules, no gitlinks, and no state file to keep in sync. Your monorepo stays a completely normal git repo; the public repos stay completely normal git repos; monolith is the thing that moves commits between them.
 
-**Status: early. v0.x.** The core sync loop (seed / push / pull / sync / status / doctor / tag) is covered by a black-box e2e suite, but the API and output are not frozen yet, and it has not been battle-tested across many repos. Read [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) to see exactly what is proven to work.
+**Status: early. v0.x.** The core sync loop (push / pull / adopt / sync / status / doctor / tag) is covered by a black-box e2e suite, but the API and output are not frozen yet, and it has not been battle-tested across many repos. Read [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) to see exactly what is proven to work.
 
 ## Install
 
@@ -50,12 +50,25 @@ export default defineConfig({
 })
 ```
 
-Publish it for the first time:
+Then just push. The first push notices the remote is empty, asks once, and publishes `core/`'s
+current tree as the public repo's first commit:
 
 ```sh
-monolith seed core                 # one squashed "Initial import" commit
-monolith seed core --full-history  # …or replay every commit that touched core/
+monolith push core
+# core.git (main) is empty. Publish core's current tree as its first public commit? [y/N]
 ```
+
+In a script or CI there is nobody to ask, so pass the answer explicitly — and add
+`--full-history` if you want every monorepo commit that ever touched `core/` replayed instead
+of one baseline commit:
+
+```sh
+monolith push core --yes
+monolith push core --yes --full-history
+```
+
+If the public repo already exists and has history, don't push — see
+[Adopting an existing repo](#adopting-an-existing-repo).
 
 Then just work in the monorepo as you always have:
 
@@ -74,6 +87,35 @@ monolith pull     # replays it into core/, with the original author preserved
 monolith sync     # pull then push, in one go
 monolith tag core v1.0.0
 ```
+
+## Adopting an existing repo
+
+First contact is detected, never configured. monolith looks at two things — whether the
+subrepo directory has committed content, and whether the remote branch exists — and there is
+exactly one right move for each combination:
+
+| `path/` in the monorepo | remote branch | What to run | What happens |
+| --- | --- | --- | --- |
+| has content | empty | `monolith push <name>` (`--yes` in scripts) | Publishes the current tree as one `Initial import of <name>` commit. `--full-history` replays every commit that touched the directory instead. |
+| empty / absent | has history | `monolith adopt <name>` | Materializes the remote's HEAD tree at `path/` in **one** monorepo commit. `--history` replays every public commit instead, authors and messages preserved. |
+| has content | has history | `monolith adopt <name>` | Only if the two trees already match — that records the baseline as an empty commit. Otherwise monolith lists the differing paths and stops; `--theirs` replaces `path/` with the public tree in one commit. |
+| empty / absent | empty | — | Nothing exists yet. Commit something, or point `remote` at a repo that has content. |
+
+```sh
+# a public repo with 200 commits of its own history, no core/ in the monorepo yet
+monolith adopt core             # one commit: "Adopt core from …@ 9f2c1ab0e4"
+monolith adopt core --history   # …or replay all 200 into core/
+```
+
+Either way the adopt commit carries `Monolith-Origin: <pub-sha>`, which is what makes
+`status` say "in sync" immediately: the public history is reflected by ancestry, not by
+importing it commit by commit. Everything before the adopt commit stays in your monorepo
+history and is never exported — the next `push` publishes only genuinely new work, parented
+on the public repo's existing head.
+
+`push` and `pull` refuse to guess. Pointed at a remote whose history is unrelated to the
+monorepo, both stop and tell you to run `adopt`; run `adopt` on a pair that is already
+connected and it stops too.
 
 ## Configuration
 
@@ -166,8 +208,8 @@ Because the scan runs against every commit being exported — not just the final
 | Command | What it does |
 | --- | --- |
 | `monolith init` | Write a starter `monolith.config.ts` in the current directory. Running it again is a no-op. |
-| `monolith seed <subrepo> [--full-history]` | First publish. Default squashes the subrepo's current tree into one "Initial import" commit; `--full-history` replays every monorepo commit that touched the directory. Refuses if the remote branch already exists. |
-| `monolith push [subrepo]` | Export new monorepo commits to the public remote(s). Defaults to every configured subrepo. |
+| `monolith adopt <subrepo> [--history] [--theirs]` | Connect a subrepo to a public remote that already has history. Default records the remote's HEAD tree in one commit; `--history` replays every public commit; `--theirs` resolves the "both sides have content and disagree" case in favour of the remote. Refuses if the two are already connected. |
+| `monolith push [subrepo] [--yes] [--full-history]` | Export new monorepo commits to the public remote(s). Defaults to every configured subrepo. On a subrepo's **first** push it asks before publishing — `--yes` answers that (required when there is no terminal), and `--full-history` replays every commit that touched the directory instead of publishing one baseline commit. One subrepo refusing does not stop the others; the run exits non-zero at the end. |
 | `monolith pull [subrepo] [--continue]` | Import new public commits into the monorepo. `--continue` finishes an import that stopped on a conflict, after you resolved it and ran `git add`. |
 | `monolith sync [subrepo]` | Pull, then push — converge both sides in one command. |
 | `monolith status [subrepo] [--json]` | Per-subrepo "N to push, M to pull", or "in sync". `--json` prints a stable machine-readable object for CI. |
@@ -188,7 +230,9 @@ A push replays each pending monorepo commit one at a time: it builds the filtere
 
 ### There is no state file
 
-Nothing on disk records "where we got to". On every run, monolith re-derives both cursors from trailers: it scans the public branch for `Monolith-Source` to find the newest monorepo commit already published, and scans monorepo `HEAD` for `Monolith-Origin` to find which public commits are already reflected. Everything else follows from those two sets.
+Nothing on disk records "where we got to". On every run, monolith re-derives both cursors from trailers: it walks monorepo `HEAD` for the newest commit the public branch already contains (one it exported, or one that imported public work and reproduces it exactly), and subtracts the public commits already reflected in the monorepo. Everything else follows from those two sets.
+
+Reflection is decided by **ancestry**, not by ticking off commits one at a time: if a monorepo commit reflects public commit X, then everything X is built on is reflected too. That is what lets a one-commit `adopt` of a 200-commit public repo report "in sync" instead of "200 to pull".
 
 The practical consequence: a fresh clone of your monorepo on a new machine can `push`, `pull` and `sync` immediately, with zero setup and nothing to restore. There is no cache to invalidate and no lockfile to conflict on. (`doctor` exists to verify the derived picture against the actual trees, which is only possible because the derivation is the source of truth.)
 
@@ -266,7 +310,6 @@ git tag vX.Y.Z && git push origin main vX.Y.Z
 
 Not built yet, in rough order of usefulness:
 
-- **Adopt an existing repo** — seed against a public repo that already has history, instead of requiring an empty remote.
 - **Branch export** — sync branches other than the configured one, so feature branches and release branches can be published too.
 - **A GitHub Action** — run `monolith sync` (or at least `monolith status`) in CI on a schedule.
 - **Standalone binaries** — `oclif pack` tarballs so the CLI can be installed without a Node toolchain.

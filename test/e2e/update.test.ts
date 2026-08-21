@@ -15,8 +15,9 @@ describe('update', () => {
     const res = await runMonolith(sandbox(), ['--help'])
     expect(res.exitCode, res.stderr).toBe(0)
     const all = `${res.stdout}\n${res.stderr}`
-    for (const cmd of ['init', 'seed', 'push', 'pull', 'sync', 'status', 'doctor', 'tag', 'update']) {
+    for (const cmd of ['adopt', 'init', 'push', 'pull', 'sync', 'status', 'doctor', 'tag', 'update']) {
       expect(all, `help should list ${cmd}`).toMatch(new RegExp(`^\\s*${cmd}\\b`, 'm'))
     }
+    expect(all, 'seed was retired').not.toMatch(/^\s*seed\b/m)
   })
 })

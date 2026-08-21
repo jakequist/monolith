@@ -46,7 +46,7 @@ async function seededWithExternal(opts: {configExtra?: string} = {}): Promise<{
   pubDir: string
 }> {
   const {root, mono, pubDir} = await standardFixture(opts)
-  const res = await runMonolith(mono.dir, ['seed', 'core'])
+  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   const ext = await cloneRemote(root, pubDir, 'ext')
   return {root, mono, pub: new TestRepo(pubDir), ext, pubDir}
@@ -116,8 +116,8 @@ describe('S50 / S85: status across the lifecycle', () => {
   it('reports an unseeded subrepo without failing', async () => {
     const {mono, pubDir} = await standardFixture()
     const s = await status(mono.dir)
-    expect(s.human).toMatch(/core: not seeded/)
-    expect(s.human).toMatch(/monolith seed core/)
+    expect(s.human).toMatch(/core: not published yet/)
+    expect(s.human).toMatch(/monolith push core --yes/)
     expect(s.core).toMatchObject({
       name: 'core',
       remote: pubDir,

@@ -1,7 +1,7 @@
 import type {ResolvedSubrepo} from '../config.js'
 import {EMPTY_TREE, type CommitMeta, commitTree, git, gitOk, pushRef, readCommit, revList} from './git.js'
 import {filteredSubtree} from './filter.js'
-import type {SyncView} from './sync.js'
+import {remoteTrackingRef, unpublishedView, type SyncView} from './sync.js'
 import {ORIGIN_TRAILER, SOURCE_TRAILER, appendTrailer, getTrailer} from './trailers.js'
 
 export interface ExportCandidate {
@@ -47,7 +47,7 @@ export async function planExport(
   subrepo: ResolvedSubrepo,
   view: SyncView,
 ): Promise<{candidates: ExportCandidate[]}> {
-  const range = view.exportBaseMono ? `${view.exportBaseMono}..HEAD` : 'HEAD'
+  const range = view.exportBase ? `${view.exportBase}..HEAD` : 'HEAD'
   const shas = await revList(root, ['--reverse', '--topo-order', range, '--', subrepo.path])
   return {
     candidates: shas.filter((sha) => !view.exportedMonoToPub.has(sha)).map((monoSha) => ({monoSha})),
@@ -157,13 +157,62 @@ export async function runExport(
 }
 
 /**
- * Has monorepo history been rewritten under the last exported commit? Export appends to
- * pub assuming `exportBaseMono..HEAD` is the set of new commits; if the base is no longer
- * reachable from HEAD that range is meaningless.
+ * Has monorepo history been rewritten under the last exported commit? Export appends to pub
+ * assuming everything after the scan base is new; if the commit pub says it last exported is
+ * no longer reachable from HEAD, the monorepo was rebased underneath the mapping. This has to
+ * consult `lastExportedMono` rather than `exportBase`: a rewritten-away commit is exactly the
+ * one the HEAD walk cannot see.
  */
 export async function exportBaseRewritten(root: string, view: SyncView): Promise<boolean> {
-  if (!view.exportBaseMono) return false
-  return !(await gitOk(root, ['merge-base', '--is-ancestor', view.exportBaseMono, 'HEAD']))
+  if (!view.lastExportedMono) return false
+  return !(await gitOk(root, ['merge-base', '--is-ancestor', view.lastExportedMono, 'HEAD']))
+}
+
+/**
+ * The first public commit: the subrepo's current tree as one parentless commit. Returns null
+ * when there is nothing publishable left after excludes and hooks. Object-db only, like every
+ * other export path — the working tree is never touched.
+ */
+export async function publishBaseline(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  monoHead: string,
+): Promise<string | null> {
+  const tree = await filteredSubtree(root, monoHead, subrepo)
+  if (tree === null || tree === EMPTY_TREE) return null
+
+  const meta = await readCommit(root, monoHead)
+  const pubSha = await commitTree(root, {
+    tree,
+    parents: [],
+    message: appendTrailer(`Initial import of ${subrepo.name}\n`, SOURCE_TRAILER, meta.sha),
+    authorName: meta.committerName,
+    authorEmail: meta.committerEmail,
+    authorDate: meta.committerDate,
+    committerName: meta.committerName,
+    committerEmail: meta.committerEmail,
+    committerDate: meta.committerDate,
+  })
+
+  await pushRef(root, subrepo.remote, pubSha, `refs/heads/${subrepo.branch}`)
+  await git(root, ['update-ref', remoteTrackingRef(subrepo.name), pubSha])
+  return pubSha
+}
+
+/**
+ * First publish that replays every monorepo commit touching the path instead of squashing.
+ * Goes through `runExport`, so scan hooks run per replayed commit and a throwing one aborts
+ * before the single ref update — nothing partial ever reaches the remote.
+ */
+export async function publishFullHistory(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  monoHead: string,
+): Promise<ExportResult> {
+  const shas = await revList(root, ['--reverse', '--topo-order', monoHead, '--', subrepo.path])
+  return runExport(root, subrepo, unpublishedView(subrepo.name), {
+    candidates: shas.map((monoSha) => ({monoSha})),
+  })
 }
 
 /** Why export must not run, or null when the derived mapping is trustworthy. */
@@ -180,7 +229,7 @@ Run \`monolith doctor\` to see the full picture.`
   }
 
   if (await exportBaseRewritten(root, view)) {
-    return `${subrepo.name}: the last exported monorepo commit ${view.exportBaseMono} is no longer an ancestor of HEAD.
+    return `${subrepo.name}: the last exported monorepo commit ${view.lastExportedMono} is no longer an ancestor of HEAD.
 Monorepo history was rewritten (rebase, amend or force-push) underneath it, so monolith cannot tell which commits are new. Nothing was pushed to ${subrepo.remote}.
 Run \`monolith doctor\` for details, then restore that commit (\`git reflog\`) before pushing again.`
   }

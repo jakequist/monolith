@@ -13,11 +13,11 @@ subrepo, `core/` = the configured subrepo path.
 > (confirmation-gated), inbound first contact in `adopt` (see S90s).
 
 - [x] S01 `init` scaffolds `monolith.config.ts`; running it again is a safe no-op.
-- [ ] S02 First `push --yes` (baseline): mono with mixed history → pub gets exactly one baseline commit whose tree equals `core/` subtree, carrying `Monolith-Source`.
-- [ ] S03 First `push --yes --full-history`: every mono commit touching `core/` replayed in order with messages/authors preserved and `Monolith-Source` trailers.
-- [ ] S04 First push honors `exclude` patterns — excluded files absent from pub tree even though present in mono history.
-- [ ] S05 Push against a pub that has history but no relation to mono → refuses, points at `monolith adopt`, exit ≠ 0.
-- [ ] S06 First push when `core/` has no committed files yet → clear error, nothing pushed.
+- [x] S02 First `push --yes` (baseline): mono with mixed history → pub gets exactly one baseline commit whose tree equals `core/` subtree, carrying `Monolith-Source`.
+- [x] S03 First `push --yes --full-history`: every mono commit touching `core/` replayed in order with messages/authors preserved and `Monolith-Source` trailers.
+- [x] S04 First push honors `exclude` patterns — excluded files absent from pub tree even though present in mono history.
+- [x] S05 Push against a pub that has history but no relation to mono → refuses, points at `monolith adopt`, exit ≠ 0.
+- [x] S06 First push when `core/` has no committed files yet → clear error, nothing pushed.
 
 ## Push (export)
 
@@ -86,18 +86,18 @@ subrepo, `core/` = the configured subrepo path.
 > confirmation-gated `push`, inbound t=0 is `adopt` (shallow by default).
 > "Baseline" = the sync point; nothing in mono history is ever squashed.
 
-- [ ] S90 `push` with an unpublished subrepo, non-interactive, no `--yes` → refuses with a one-line explanation and the exact command to run; remote stays empty; other subrepos in the same run are still pushed.
-- [ ] S91 `push --yes` publishes the baseline and reports it distinctly from normal exports; an immediately following `push` is "up to date"; later commits export per-commit.
-- [ ] S92 `push --yes --full-history` replays all history; scan hooks run per replayed commit and a throwing hook aborts with nothing pushed (the dead-secret case).
-- [ ] S93 `adopt <name>` with pub history and NO mono dir (shallow default): exactly ONE mono commit placing pub HEAD's tree at the path, `Monolith-Origin: <pubHead>`; then `pull`, `push`, `status` all report in sync (ancestry-based reflection — pub's 50-commit history must NOT show as "50 to pull").
-- [ ] S94 `adopt <name> --history`: full per-commit import with authors/messages preserved (the old pull-adopt behavior), then in sync.
-- [ ] S95 `adopt` when BOTH sides have content and trees match exactly → baseline recorded (empty mono commit with Origin trailer); push/pull in sync; a NEW mono commit then exports parented on the EXISTING pub head (shared history going forward).
-- [ ] S96 `adopt` when both sides have content and trees differ → refuses listing the differing paths, nothing written anywhere; `adopt --theirs` replaces the mono dir with pub content in one commit (Origin trailer) and lands in sync; the pre-adopt mono content stays in mono history but never exports.
-- [ ] S97 `pull` against an unrelated pub (no trailers, mono dir exists) → refuses and points at `adopt`; nothing imported, working tree untouched.
-- [ ] S98 REGRESSION GUARD: after any adopt (S93/S95/S96), `push` must never re-export pre-adoption mono history — the export scan base must anchor on the adopt commit's Origin trailer, not just pub Source trailers. Assert pub log gains nothing but genuinely new commits.
-- [ ] S99 Matrix dead end: configured subrepo with empty mono dir AND empty remote → every command gives the same clear "nothing exists yet" error, exit ≠ 0.
-- [ ] S99a `adopt` preconditions: dirty files under the path, or staged changes anywhere → refuses before fetching/writing (same rules as pull).
-- [ ] S99b `adopt` on an already-related subrepo (trailers exist) → "already adopted/published", no-op, exit ≠ 0 with explanation.
+- [x] S90 `push` with an unpublished subrepo, non-interactive, no `--yes` → refuses with a one-line explanation and the exact command to run; remote stays empty; other subrepos in the same run are still pushed.
+- [x] S91 `push --yes` publishes the baseline and reports it distinctly from normal exports; an immediately following `push` is "up to date"; later commits export per-commit.
+- [x] S92 `push --yes --full-history` replays all history; scan hooks run per replayed commit and a throwing hook aborts with nothing pushed (the dead-secret case).
+- [x] S93 `adopt <name>` with pub history and NO mono dir (shallow default): exactly ONE mono commit placing pub HEAD's tree at the path, `Monolith-Origin: <pubHead>`; then `pull`, `push`, `status` all report in sync (ancestry-based reflection — pub's 50-commit history must NOT show as "50 to pull").
+- [x] S94 `adopt <name> --history`: full per-commit import with authors/messages preserved (the old pull-adopt behavior), then in sync.
+- [x] S95 `adopt` when BOTH sides have content and trees match exactly → baseline recorded (empty mono commit with Origin trailer); push/pull in sync; a NEW mono commit then exports parented on the EXISTING pub head (shared history going forward).
+- [x] S96 `adopt` when both sides have content and trees differ → refuses listing the differing paths, nothing written anywhere; `adopt --theirs` replaces the mono dir with pub content in one commit (Origin trailer) and lands in sync; the pre-adopt mono content stays in mono history but never exports.
+- [x] S97 `pull` against an unrelated pub (no trailers, mono dir exists) → refuses and points at `adopt`; nothing imported, working tree untouched.
+- [x] S98 REGRESSION GUARD: after any adopt (S93/S95/S96), `push` must never re-export pre-adoption mono history — the export scan base must anchor on the adopt commit's Origin trailer, not just pub Source trailers. Assert pub log gains nothing but genuinely new commits.
+- [x] S99 Matrix dead end: configured subrepo with empty mono dir AND empty remote → every command gives the same clear "nothing exists yet" error, exit ≠ 0.
+- [x] S99a `adopt` preconditions: dirty files under the path, or staged changes anywhere → refuses before fetching/writing (same rules as pull).
+- [x] S99b `adopt` on an already-related subrepo (trailers exist) → "already adopted/published", no-op, exit ≠ 0 with explanation.
 
 ## Vendor
 

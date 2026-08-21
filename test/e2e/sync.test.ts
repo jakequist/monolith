@@ -11,7 +11,7 @@ async function seededWithExternal(opts: {configExtra?: string} = {}): Promise<{
   ext: TestRepo
 }> {
   const {root, mono, pubDir} = await standardFixture(opts)
-  const res = await runMonolith(mono.dir, ['seed', 'core'])
+  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   const ext = await cloneRemote(root, pubDir, 'ext')
   return {root, mono, pub: new TestRepo(pubDir), ext}
@@ -54,11 +54,11 @@ describe('S40: sync = pull then push', () => {
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
   })
 
-  it('tells the user to seed when the public branch does not exist', async () => {
+  it('tells the user to publish when the public branch does not exist', async () => {
     const {mono} = await standardFixture()
     const res = await runMonolith(mono.dir, ['sync'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/monolith seed/)
+    expect(res.stderr).toMatch(/monolith push core --yes/)
   })
 
   it('refuses to start while a pull is mid-conflict', async () => {

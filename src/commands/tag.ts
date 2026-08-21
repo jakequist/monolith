@@ -4,7 +4,7 @@ import {MonolithCommand} from '../lib/base.js'
 import {computeExports, planExport} from '../core/exporter.js'
 import {GitError, git, pushRef} from '../core/git.js'
 import type {SyncView} from '../core/sync.js'
-import {loadView, requireSeeded} from '../lib/ops.js'
+import {loadView, requirePublished} from '../lib/ops.js'
 
 export default class Tag extends MonolithCommand {
   static description = 'Tag the public commit that corresponds to the current monorepo HEAD'
@@ -25,8 +25,8 @@ export default class Tag extends MonolithCommand {
     const reporter = this.reporter()
 
     const view = await loadView(root, subrepo, reporter)
-    requireSeeded(subrepo, view, reporter)
-    // requireSeeded exits the process when pubHead is null; TS cannot see that.
+    await requirePublished(root, subrepo, view, reporter)
+    // requirePublished exits the process when pubHead is null; TS cannot see that.
     const pubHead = view.pubHead!
 
     // A tag is a promise that "this public commit is what the monorepo says it is",

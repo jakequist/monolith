@@ -5,7 +5,7 @@ import {type TestRepo, cloneRemote, multiFixture, runMonolith} from './harness.j
 async function seededPair(): Promise<Awaited<ReturnType<typeof multiFixture>>> {
   const fixture = await multiFixture()
   for (const name of ['core', 'lib']) {
-    const res = await runMonolith(fixture.mono.dir, ['seed', name])
+    const res = await runMonolith(fixture.mono.dir, ['push', name, '--yes'])
     expect(res.exitCode, res.stderr).toBe(0)
   }
   return fixture

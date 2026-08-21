@@ -3,7 +3,7 @@ import {TestRepo, cloneRemote, runMonolith, standardFixture} from './harness.js'
 
 async function seeded(): Promise<{root: string; mono: TestRepo; pubDir: string; pub: TestRepo}> {
   const {root, mono, pubDir} = await standardFixture()
-  const res = await runMonolith(mono.dir, ['seed', 'core'])
+  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   return {root, mono, pubDir, pub: new TestRepo(pubDir)}
 }
@@ -79,6 +79,6 @@ describe('S71: tagging with unexported commits', () => {
     const {mono} = await standardFixture()
     const res = await runMonolith(mono.dir, ['tag', 'core', 'v1.0.0'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/monolith seed core/)
+    expect(res.stderr).toMatch(/monolith push core --yes/)
   })
 })

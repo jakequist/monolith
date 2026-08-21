@@ -18,13 +18,30 @@ submodule-free ergonomics."
     tree-equality no-op check drops it; a *conflicted* import (merge of mono + pub edits)
     differs from the pub tip and MUST export, or the resolution would be lost. This is what
     keeps `pub tree == filtered(mono HEAD)` structurally true after every push.
+  - **Origin trailers are export anchors too.** The export scan base is the newest commit on
+    the `HEAD` walk that pub already contains: a `Monolith-Source` key, *or* a
+    `Monolith-Origin` commit naming an ancestor of pub head whose `filteredSubtree` equals
+    that pub commit's tree. The tree check is load-bearing both ways — without it a push
+    after `adopt` replays the whole pre-adoption monorepo history onto the adopted repo, and
+    with a naive version a conflicted import would silently become the base and lose its
+    resolution.
+  - **Reflection is ancestry-based.** Unimported pub commits are
+    `rev-list <pubHead> --not <each imported sha>` (fed via `--stdin`), minus our own exports.
+    Every ancestor of a reflected commit is reflected; a one-commit `adopt` of a 200-commit
+    repo must never read as "200 to pull".
+- **First contact is detected, not configured.** Outbound (`pubHead` null) is a
+  confirmation-gated first `push` — TTY prompt, `--yes` otherwise, plus `--full-history`.
+  Inbound (pub has unrelated history) is `adopt`. Unrelated + either direction → refuse and
+  name `monolith adopt`. Both empty → one shared "nothing exists yet" error. There is no
+  `seed` command.
 - **There is no authoritative state file.** Sync cursors are derived from trailers on every
   run (scan pub for `Monolith-Source`, mono for `Monolith-Origin`). Correctness must never
   depend on cached state; any cache added later is a pure optimization that `doctor` can
   verify. Fresh clones work with zero ceremony because of this.
 - **Export never touches the working tree.** All export work uses git plumbing
   (`rev-list`, `commit-tree`, `mktree`, `cat-file`) against the object database. Import is the
-  only operation allowed to modify the working tree (it's a merge the user resolves).
+  only operation allowed to modify the working tree (it's a merge the user resolves) — and
+  `adopt` is an import-side op, so it may too.
 - **Talk to git by shelling out** (`execa` + system `git`). No isomorphic-git, no nodegit.
 - **Fail loud on surprises.** Cursor not an ancestor of HEAD (rebase/force-push), diverged
   public remote, dirty subrepo dir on pull → stop with a clear message. Never export garbage.

@@ -92,17 +92,19 @@ export async function unmergedPaths(root: string): Promise<string[]> {
 export async function checkImportPreconditions(
   root: string,
   subrepo: ResolvedSubrepo,
+  /** Command to retry, so `adopt` does not tell the user to run `pull`. */
+  retry = `monolith pull ${subrepo.name}`,
 ): Promise<string | null> {
   if (!(await revParse(root, 'HEAD'))) {
     return `${root} has no commits yet — commit something before importing from ${subrepo.remote}.`
   }
   const dirty = await git(root, ['status', '--porcelain', '--', subrepo.path])
   if (dirty !== '') {
-    return `${subrepo.name}: ${subrepo.path}/ has uncommitted changes:\n${dirty}\nCommit or stash them, then run \`monolith pull ${subrepo.name}\` again. Nothing was imported.`
+    return `${subrepo.name}: ${subrepo.path}/ has uncommitted changes:\n${dirty}\nCommit or stash them, then run \`${retry}\` again. Nothing was imported.`
   }
   if (!(await gitOk(root, ['diff', '--cached', '--quiet']))) {
     const staged = await git(root, ['diff', '--cached', '--name-only'])
-    return `${subrepo.name}: you have staged changes:\n${staged}\nAn import commits the index, so it would sweep them in. Commit or unstage them, then run \`monolith pull ${subrepo.name}\` again. Nothing was imported.`
+    return `${subrepo.name}: you have staged changes:\n${staged}\nAn import commits the index, so it would sweep them in. Commit or unstage them, then run \`${retry}\` again. Nothing was imported.`
   }
   return null
 }

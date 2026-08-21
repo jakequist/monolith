@@ -36,6 +36,7 @@ export default class Init extends Command {
     const target = path.join(cwd, 'monolith.config.ts')
     fs.writeFileSync(target, TEMPLATE)
     this.log(`Created ${target}`)
-    this.log('Add your subrepos to the config, then run `monolith seed <name>` to publish one.')
+    this.log('Add your subrepos to the config, then run `monolith push <name>` to publish one')
+    this.log('(or `monolith adopt <name>` if the remote already has history).')
   }
 }

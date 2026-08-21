@@ -12,7 +12,7 @@ import {
 
 async function seeded(): Promise<{root: string; mono: TestRepo; pubDir: string; pub: TestRepo}> {
   const {root, mono, pubDir} = await standardFixture()
-  const res = await runMonolith(mono.dir, ['seed', 'core'])
+  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   return {root, mono, pubDir, pub: new TestRepo(pubDir)}
 }

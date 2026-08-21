@@ -11,7 +11,7 @@ async function seeded(opts: {configExtra?: string} = {}): Promise<{
   pub: TestRepo
 }> {
   const {root, mono, pubDir} = await standardFixture(opts)
-  const res = await runMonolith(mono.dir, ['seed', 'core'])
+  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   return {root, mono, pubDir, pub: new TestRepo(pubDir)}
 }
