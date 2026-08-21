@@ -20,11 +20,13 @@ jobs:
         with:
           version: 10
 
+      # No registry-url here: setup-node would write a placeholder token into
+      # .npmrc, which shadows the OIDC trusted-publishing exchange. Node >= 22
+      # because npm@latest (needed for OIDC) no longer supports 20.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
 
       - run: pnpm install --frozen-lockfile
 
