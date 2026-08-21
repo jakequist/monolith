@@ -19,7 +19,7 @@ npm install -g https://github.com/jakequist/monolith/releases/latest/download/mo
 Releases are published as tarballs on [GitHub Releases](https://github.com/jakequist/monolith/releases), not to the npm registry — the URL above always points at the newest one. To pin a version, install its versioned asset instead:
 
 ```sh
-npm install -g https://github.com/jakequist/monolith/releases/download/v0.1.1/monolith-0.1.1.tgz
+npm install -g https://github.com/jakequist/monolith/releases/download/v0.2.0/monolith-0.2.0.tgz
 ```
 
 Once installed, `monolith update` self-updates from GitHub Releases (`monolith update --check` just reports installed vs. latest).
