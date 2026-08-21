@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="340" viewBox="0 0 880 340" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" role="img" aria-label="A monorepo file tree with core/, cli/ and vendor/lodash/ spliced out to standalone repos via bidirectional sync arrows; website/ and infra/ are never exported">
+  <style>
+    .card      { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
+    .caption   { fill: #57606a; font-size: 12px; letter-spacing: 0.08em; }
+    .tree      { fill: #1f2328; font-size: 14px; }
+    .muted     { fill: #6e7781; font-size: 14px; }
+    .note      { fill: #6e7781; font-size: 12px; font-style: italic; }
+    .spliced   { fill: #0969da; font-weight: 600; }
+    .repohost  { fill: #6e7781; font-size: 13px; }
+    .reponame  { fill: #1f2328; font-weight: 600; }
+    .arrow     { stroke: #0969da; fill: none; stroke-width: 1.6; }
+    .arrowhead { fill: #0969da; }
+    .synclabel { fill: #0969da; font-size: 11px; }
+    @media (prefers-color-scheme: dark) {
+      .card      { fill: #161b22; stroke: #30363d; }
+      .caption   { fill: #8b949e; }
+      .tree      { fill: #e6edf3; }
+      .muted     { fill: #8b949e; }
+      .note      { fill: #8b949e; }
+      .spliced   { fill: #58a6ff; }
+      .repohost  { fill: #8b949e; }
+      .reponame  { fill: #e6edf3; }
+      .arrow     { stroke: #58a6ff; }
+      .arrowhead { fill: #58a6ff; }
+      .synclabel { fill: #58a6ff; }
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="arrowhead"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="36" class="caption">YOUR MONOREPO</text>
+  <text x="560" y="36" class="caption">STANDALONE REPOS</text>
+
+  <rect x="40" y="56" width="300" height="264" rx="10" class="card"/>
+
+  <text x="64" y="96" class="tree" font-weight="600">my-monorepo/</text>
+  <text x="64" y="132" class="muted">├── <tspan class="spliced">core/</tspan></text>
+  <text x="64" y="162" class="muted">├── <tspan class="spliced">cli/</tspan></text>
+  <text x="64" y="192" class="muted">├── <tspan class="tree">website/</tspan></text>
+  <text x="64" y="222" class="muted">├── <tspan class="tree">infra/</tspan></text>
+  <text x="200" y="207" class="note">(never exported)</text>
+  <text x="64" y="252" class="muted">└── <tspan class="tree">vendor/</tspan></text>
+  <text x="92" y="282" class="muted">└── <tspan class="spliced">lodash/</tspan></text>
+
+  <rect x="560" y="84" width="280" height="52" rx="10" class="card"/>
+  <text x="700" y="115" text-anchor="middle" class="repohost">github.com/<tspan class="reponame">you/core</tspan></text>
+
+  <rect x="560" y="164" width="280" height="52" rx="10" class="card"/>
+  <text x="700" y="195" text-anchor="middle" class="repohost">github.com/<tspan class="reponame">you/cli</tspan></text>
+
+  <rect x="560" y="244" width="280" height="52" rx="10" class="card"/>
+  <text x="700" y="275" text-anchor="middle" class="repohost">github.com/<tspan class="reponame">lodash/lodash</tspan></text>
+
+  <path d="M352,127 C 430,127 470,110 548,110" class="arrow" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <text x="450" y="108" text-anchor="middle" class="synclabel">sync</text>
+
+  <path d="M352,157 C 430,157 470,190 548,190" class="arrow" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <text x="450" y="163" text-anchor="middle" class="synclabel">sync</text>
+
+  <path d="M352,277 C 430,277 470,270 548,270" class="arrow" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <text x="450" y="262" text-anchor="middle" class="synclabel">sync</text>
+</svg>

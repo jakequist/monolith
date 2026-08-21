@@ -6,15 +6,9 @@ Keep everything in one monorepo. Splice any directory out as a real, standalone 
 repository, and let commits flow both ways — `push` exports your commits, `pull` replays
 outside contributions back in, one commit at a time, authors and messages preserved.
 
-```
-my-monorepo/
-├── core/       ◀━━━ sync ━━━▶   github.com/you/core
-├── cli/        ◀━━━ sync ━━━▶   github.com/you/cli
-├── website/
-├── infra/                       (everything else never leaves)
-└── vendor/
-    └── lodash/ ◀━━━ sync ━━━▶   github.com/lodash/lodash
-```
+<p align="center">
+  <img src="docs/assets/splice-diagram.svg" alt="my-monorepo/ with core/, cli/ and vendor/lodash/ spliced out to standalone repos via bidirectional sync; website/ and infra/ never exported" width="880">
+</p>
 
 No submodules, no gitlinks, no state file, no special clone steps for contributors. The
 monorepo stays a completely normal git repo; so does every repo spliced out of it. Use it to
