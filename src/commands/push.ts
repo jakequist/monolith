@@ -1,9 +1,9 @@
-import readline from 'node:readline/promises'
 import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
 import {MonospliceCommand} from '../lib/base.js'
 import {
   SubrepoFailure,
+  confirmFirstPublish,
   exportSubrepo,
   firstPublish,
   loadView,
@@ -85,7 +85,7 @@ export default class Push extends MonospliceCommand {
     if (view.pubHead === null) {
       const result = await firstPublish(root, subrepo, r, {
         fullHistory: flags['full-history'],
-        confirm: () => this.confirmFirstPublish(subrepo, flags.yes, r),
+        confirm: () => confirmFirstPublish(subrepo, r, {yes: flags.yes}),
       })
       const how = result.fullHistory ? `replayed ${result.commits} commit(s)` : 'one baseline commit'
       this.log(`✓ ${subrepo.name}: published ${subrepo.path}/ to ${subrepo.remote} (${subrepo.branch}) — ${how}`)
@@ -108,35 +108,5 @@ Nothing was pushed. Run \`monosplice push ${subrepo.name}\` to export new commit
         `✓ ${subrepo.name}: up to date — ${subrepo.remote} (${subrepo.pushBranch}) already carries ${awaiting} commit(s), awaiting an upstream merge`,
       )
     } else this.log(`✓ ${subrepo.name}: up to date`)
-  }
-
-  /**
-   * Publishing to a public remote is irreversible, so the very first push asks. At a
-   * terminal that is a prompt; anywhere else it is a refusal naming the exact command,
-   * because a CI job must never publish a repository by accident.
-   */
-  private async confirmFirstPublish(subrepo: ResolvedSubrepo, yes: boolean, r: Reporter): Promise<void> {
-    if (yes) return
-
-    if (process.stdin.isTTY && process.stdout.isTTY) {
-      const rl = readline.createInterface({input: process.stdin, output: process.stdout})
-      let answer: string
-      try {
-        answer = await rl.question(
-          `${subrepo.remote} (${subrepo.branch}) is empty. Publish ${subrepo.name}'s current tree as its first public commit? [y/N] `,
-        )
-      } finally {
-        rl.close()
-      }
-      if (/^y(es)?$/i.test(answer.trim())) return
-      r.fail(`${subrepo.name}: cancelled — nothing was pushed to ${subrepo.remote}.`)
-    }
-
-    r.fail(
-      `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch — this would be the first publish of ${subrepo.path}/.
-Nothing was pushed. Publishing to a public remote cannot be undone, so monosplice asks first; there is no terminal here to ask at. Run:
-  monosplice push ${subrepo.name} --yes
-Add --full-history to replay every monorepo commit that touched ${subrepo.path}/ instead of publishing one baseline commit.`,
-    )
   }
 }

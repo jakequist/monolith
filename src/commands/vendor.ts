@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {Args, Flags} from '@oclif/core'
-import {loadProject, type Project, type ResolvedSubrepo} from '../config.js'
+import type {ResolvedSubrepo} from '../config.js'
 import {MonospliceCommand} from '../lib/base.js'
 import {applyTreeInto, commitStaged, vendorMessage} from '../core/adopt.js'
 import {hasCommittedFiles} from '../core/filter.js'
@@ -10,12 +10,18 @@ import {readSequencer} from '../core/importer.js'
 import {normalizeSubrepoPath} from '../core/paths.js'
 import {pullSource, remoteTrackingRef} from '../core/sync.js'
 import {
-  checkVendorPreconditions,
+  checkConfigEditPreconditions,
+  checkFreeSlot,
   deriveVendorName,
-  insertSubrepoEntry,
-  renderSubrepoEntry,
+  pasteItYourself,
+  writeConfigEntry,
 } from '../core/vendor.js'
 import {pullInProgressMessage} from '../lib/ops.js'
+
+const VENDOR_HINTS = {
+  rename: 'Vendor it under another name with `--name <name>`',
+  relocate: 'Pick another directory with `--path <dir>`.',
+}
 
 export default class Vendor extends MonospliceCommand {
   static description = 'Add a third-party repository as a tracked subrepo, in one commit'
@@ -47,12 +53,13 @@ export default class Vendor extends MonospliceCommand {
     const url = args.url
 
     const entry = this.plan(url, flags)
-    this.requireFreeSlot(project, entry)
+    const taken = checkFreeSlot(project.subrepos, entry, VENDOR_HINTS)
+    if (taken) this.error(taken)
 
     // Everything below writes something. Nothing above did.
     const state = await readSequencer(root)
     if (state) this.error(await pullInProgressMessage(root, state))
-    const problem = await checkVendorPreconditions(root, `monosplice vendor ${url}`)
+    const problem = await checkConfigEditPreconditions(root, `monosplice vendor ${url}`)
     if (problem) this.error(problem)
     await this.requireFreePath(root, entry)
 
@@ -62,7 +69,12 @@ export default class Vendor extends MonospliceCommand {
     const pubHead = await this.resolveRemoteHead(root, entry)
     await fetchBranch(root, source, entry.branch, remoteTrackingRef(entry.name))
 
-    await this.writeConfigEntry(project, entry)
+    const failure = await writeConfigEntry(project, entry)
+    if (failure) {
+      const {log, error} = pasteItYourself(project.configPath, failure, `monosplice adopt ${entry.name}`)
+      this.log(log)
+      this.error(error)
+    }
 
     await git(root, ['add', '--', project.configPath])
     const pubTree = await git(root, ['rev-parse', `${pubHead}^{tree}`])
@@ -114,27 +126,6 @@ export default class Vendor extends MonospliceCommand {
     }
   }
 
-  /** The name and the path must both be free, and the path may not nest inside a subrepo. */
-  private requireFreeSlot(project: Project, entry: ResolvedSubrepo): void {
-    for (const s of project.subrepos) {
-      if (s.name === entry.name) {
-        this.error(
-          `A subrepo named ${entry.name} is already configured (${s.path}/ tracking ${s.remote}).\nNothing was changed. Vendor it under another name with \`--name <name>\`, or run \`monosplice pull ${s.name}\` if this is the one you meant.`,
-        )
-      }
-      if (s.path === entry.path) {
-        this.error(
-          `${entry.path} is already configured as subrepo ${s.name}.\nNothing was changed. Pick another directory with \`--path <dir>\`.`,
-        )
-      }
-      if (s.path.startsWith(`${entry.path}/`) || entry.path.startsWith(`${s.path}/`)) {
-        this.error(
-          `subrepo paths may not nest: ${entry.path} and ${s.path} (subrepo ${s.name}) would sit inside one another.\nNothing was changed. Pick another directory with \`--path <dir>\`.`,
-        )
-      }
-    }
-  }
-
   /** Nothing may exist at the target path — not on disk, and not in the monorepo's history. */
   private async requireFreePath(root: string, entry: ResolvedSubrepo): Promise<void> {
     if (fs.existsSync(path.join(root, entry.path))) {
@@ -165,65 +156,5 @@ export default class Vendor extends MonospliceCommand {
       )
     }
     return pubHead
-  }
-
-  /**
-   * Append the entry textually, then prove it by reloading the config through the real
-   * loader. If either half fails the original bytes go back and the user gets the snippet —
-   * a half-rewritten config file is far worse than one the user pastes into themselves.
-   */
-  private async writeConfigEntry(project: Project, entry: ResolvedSubrepo): Promise<void> {
-    const snippet = renderSubrepoEntry(entry)
-    const original = fs.readFileSync(project.configPath)
-    const updated = insertSubrepoEntry(original.toString('utf8'), snippet)
-    if (updated === null) {
-      this.pasteItYourself(project.configPath, entry, snippet, 'no `subrepos: [` line to insert into')
-    }
-
-    fs.writeFileSync(project.configPath, updated)
-    const wrong = await this.reloadedMismatch(project.root, entry)
-    if (wrong) {
-      fs.writeFileSync(project.configPath, original)
-      this.pasteItYourself(project.configPath, entry, snippet, wrong)
-    }
-  }
-
-  /** Why the config monosplice just wrote cannot be trusted, or null when it checks out. */
-  private async reloadedMismatch(root: string, entry: ResolvedSubrepo): Promise<string | null> {
-    let reloaded: Project | null
-    try {
-      reloaded = await loadProject(root)
-    } catch (err) {
-      return `the rewritten config does not load:\n${(err as Error).message}`
-    }
-    if (!reloaded) return 'the config file vanished while monosplice was writing it'
-    const found = reloaded.subrepos.find((s) => s.name === entry.name)
-    if (!found) return `the rewritten config has no subrepo named ${entry.name}`
-    if (
-      found.path !== entry.path ||
-      found.remote !== entry.remote ||
-      found.branch !== entry.branch ||
-      found.upstream !== entry.upstream ||
-      found.pushBranch !== entry.pushBranch
-    ) {
-      return `the rewritten config resolves ${entry.name} to ${found.path}/ tracking ${pullSource(found)} (${found.branch}), not what monosplice wrote`
-    }
-    return null
-  }
-
-  /** Exit non-zero, but leave the entry on stdout so it can be piped or copy-pasted. */
-  private pasteItYourself(
-    configPath: string,
-    entry: ResolvedSubrepo,
-    snippet: string,
-    reason: string,
-  ): never {
-    this.log(`Add this to the \`subrepos\` array in ${configPath}:`)
-    this.log('')
-    this.log(`  ${snippet},`)
-    this.log('')
-    this.error(
-      `monosplice cannot safely edit ${configPath}: ${reason}.\nNothing was changed — the config is untouched and no commit was made. Paste the entry printed above into your config, then run:\n  monosplice adopt ${entry.name}`,
-    )
   }
 }

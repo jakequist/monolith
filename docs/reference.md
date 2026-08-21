@@ -33,6 +33,30 @@ on the remote's existing head.
 monorepo, both stop and tell you to run `adopt`; run `adopt` on a pair that is already
 connected and it stops too.
 
+### `attach`: the whole table in one command
+
+`adopt` and `push` both assume the subrepo is already in your config. `monosplice attach
+<folder> <git-url>` writes that entry for you and then makes the move the table above
+prescribes, without you having to work out which row you are on:
+
+```sh
+monosplice attach core git@github.com:you/core.git
+```
+
+- Remote has history, `core/` is empty → one commit carrying the config entry *and* the
+  remote tree, anchored with `Monosplice-Origin`. In sync immediately.
+- Remote has history, `core/` has content → the same single commit when the trees match;
+  otherwise monosplice lists the differing paths and stops. `--theirs` takes the remote tree.
+- Remote is empty, `core/` has content → the config entry is committed on its own, then the
+  first publish asks before writing to the remote. Use `--yes` in scripts (`--full-history`
+  replays every commit that touched the folder). Without confirmation the config commit still
+  lands and monosplice names `monosplice push <name> --yes`.
+- Both empty → nothing exists yet; the config is left untouched.
+
+`--name` defaults to the last segment of `<folder>`, `--branch` to `main`. Every refusal —
+name or path already configured, nesting, a dirty tree, a pull in progress, an unreachable
+URL — leaves the config byte-identical and makes no commit.
+
 ## Vendoring a third-party project
 
 `adopt` connects a subrepo you already configured. `vendor` is the sugar for the case where

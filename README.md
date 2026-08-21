@@ -89,6 +89,7 @@ one commit connects the two, and `status` reports "in sync" immediately. See
 | `monosplice sync [subrepo]` | Pull, then push — converge both sides. |
 | `monosplice status [--json]` | Per-subrepo "N to push, M to pull", or "in sync". |
 | `monosplice adopt <subrepo>` | Connect a directory to a repo that already has history. |
+| `monosplice attach <folder> <git-url>` | Write the config entry for `<folder>` and make the right first move automatically (adopt, or a first publish). |
 | `monosplice vendor <git-url>` | Add a third-party repo as a tracked, patchable directory. `--fork` sets up the [fork workflow](docs/reference.md#pushing-patches-back-upstream-fork-workflow). |
 | `monosplice doctor` | Verify the derived sync state against reality; non-zero exit on problems. |
 | `monosplice tag <subrepo> <tag>` | Tag the standalone repo at the commit matching monorepo HEAD. |

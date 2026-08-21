@@ -1,3 +1,4 @@
+import readline from 'node:readline/promises'
 import type {ResolvedSubrepo} from '../config.js'
 import {
   checkExportPreconditions,
@@ -169,6 +170,54 @@ export async function exportSubrepo(
   return result.pushed
     ? {pushed: result.exported.length, awaiting: 0}
     : {pushed: 0, awaiting: result.exported.length}
+}
+
+/** Wording that differs between the commands that can trigger a first publish. */
+export interface ConfirmFirstPublishOptions {
+  /** Skip the question entirely (`--yes`). */
+  yes: boolean
+  /**
+   * Sentence describing what already happened, used in place of "Nothing was pushed." —
+   * `attach` has committed the config entry by the time it asks, and must say so.
+   */
+  stateNote?: string
+  /** Extra sentence appended when the user answers no at a terminal. */
+  cancelNote?: string
+}
+
+/**
+ * Publishing to a public remote is irreversible, so the very first push asks. At a terminal
+ * that is a prompt; anywhere else it is a refusal naming the exact command, because a CI job
+ * must never publish a repository by accident. Never returns when the answer is no.
+ */
+export async function confirmFirstPublish(
+  subrepo: ResolvedSubrepo,
+  r: Reporter,
+  opts: ConfirmFirstPublishOptions,
+): Promise<void> {
+  if (opts.yes) return
+  const stateNote = opts.stateNote ?? 'Nothing was pushed.'
+
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    const rl = readline.createInterface({input: process.stdin, output: process.stdout})
+    let answer: string
+    try {
+      answer = await rl.question(
+        `${subrepo.remote} (${subrepo.branch}) is empty. Publish ${subrepo.name}'s current tree as its first public commit? [y/N] `,
+      )
+    } finally {
+      rl.close()
+    }
+    if (/^y(es)?$/i.test(answer.trim())) return
+    r.fail(`${subrepo.name}: cancelled — nothing was pushed to ${subrepo.remote}.${opts.cancelNote ?? ''}`)
+  }
+
+  r.fail(
+    `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch — this would be the first publish of ${subrepo.path}/.
+${stateNote} Publishing to a public remote cannot be undone, so monosplice asks first; there is no terminal here to ask at. Run:
+  monosplice push ${subrepo.name} --yes
+Add --full-history to replay every monorepo commit that touched ${subrepo.path}/ instead of publishing one baseline commit.`,
+  )
 }
 
 export interface FirstPublishOptions {

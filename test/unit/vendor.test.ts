@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest'
-import {deriveVendorName, insertSubrepoEntry, renderSubrepoEntry} from '../../src/core/vendor.js'
+import type {ResolvedSubrepo} from '../../src/config.js'
+import {checkFreeSlot, deriveVendorName, insertSubrepoEntry, renderSubrepoEntry} from '../../src/core/vendor.js'
 
 describe('deriveVendorName', () => {
   it('takes the repo basename from every URL form monosplice is likely to see', () => {
@@ -94,5 +95,46 @@ describe('insertSubrepoEntry', () => {
     expect(insertSubrepoEntry('export default {subrepos: [\n]}\n', entry)).toBeNull()
     expect(insertSubrepoEntry('export default {\n  subrepos: makeSubrepos(),\n}\n', entry)).toBeNull()
     expect(insertSubrepoEntry('export default {\n  packages: [\n  ],\n}\n', entry)).toBeNull()
+  })
+})
+
+describe('checkFreeSlot', () => {
+  const hints = {rename: 'Rename it', relocate: 'Relocate it.'}
+  const configured = (over: Partial<ResolvedSubrepo> = {}): ResolvedSubrepo => ({
+    name: 'core',
+    path: 'core',
+    remote: 'git@github.com:you/core.git',
+    branch: 'main',
+    pushBranch: 'main',
+    exclude: [],
+    ...over,
+  })
+  const entry = {name: 'lib', path: 'packages/lib', remote: 'u', branch: 'main'}
+
+  it('accepts a free name and a free path', () => {
+    expect(checkFreeSlot([configured()], entry, hints)).toBeNull()
+    expect(checkFreeSlot([], entry, hints)).toBeNull()
+  })
+
+  it('rejects a name that is taken, naming the subrepo that holds it', () => {
+    const problem = checkFreeSlot([configured()], {...entry, name: 'core'}, hints)
+    expect(problem).toContain('A subrepo named core is already configured')
+    expect(problem).toContain('monosplice pull core')
+    expect(problem).toContain('Rename it')
+  })
+
+  it('rejects a path that is taken', () => {
+    const problem = checkFreeSlot([configured()], {...entry, path: 'core'}, hints)
+    expect(problem).toContain('core is already configured as subrepo core')
+    expect(problem).toContain('Relocate it.')
+  })
+
+  it('rejects paths that nest either way round', () => {
+    expect(checkFreeSlot([configured()], {...entry, path: 'core/inner'}, hints)).toMatch(/may not nest/)
+    expect(checkFreeSlot([configured({path: 'packages/lib/deep'})], entry, hints)).toMatch(/may not nest/)
+  })
+
+  it('does not treat a shared prefix as nesting', () => {
+    expect(checkFreeSlot([configured({path: 'core-tools'})], {...entry, path: 'core'}, hints)).toBeNull()
   })
 })
