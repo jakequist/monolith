@@ -7,6 +7,12 @@ Keep your work in one private monorepo, and publish some of its directories as r
 ## Install
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/jakequist/monolith/main/install.sh | sh
+```
+
+The script checks for git and Node ≥ 20, then installs the latest release tarball with npm. It is a thin convenience over doing that yourself:
+
+```sh
 npm install -g https://github.com/jakequist/monolith/releases/latest/download/monolith.tgz
 ```
 
