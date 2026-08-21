@@ -22,6 +22,7 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
 
       - run: pnpm install --frozen-lockfile
 
@@ -42,8 +43,8 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           pnpm pack
-          cp "monolith-${version}.tgz" monolith.tgz
-          ls -l "monolith-${version}.tgz" monolith.tgz
+          cp "monosplice-${version}.tgz" monosplice.tgz
+          ls -l "monosplice-${version}.tgz" monosplice.tgz
 
       - name: Create the GitHub release
         env:
@@ -53,5 +54,16 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-            "monolith-${version}.tgz" \
-            monolith.tgz
+            "monosplice-${version}.tgz" \
+            monosplice.tgz
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::warning::NPM_TOKEN secret is not set — skipped npm publish. Add the secret and re-run this workflow (or npm publish the release tarball manually)."
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          npm publish "monosplice-${version}.tgz" --access public

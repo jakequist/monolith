@@ -4,7 +4,7 @@ import {
   cloneRemote,
   makeBareRemote,
   makeRepo,
-  runMonolith,
+  runMonosplice,
   sandbox,
   standardFixture,
   writeConfig,
@@ -16,7 +16,7 @@ const EXT_AUTHOR = {authorName: 'Ext Contributor', authorEmail: 'ext@example.tes
 interface Tri {
   root: string
   mono: TestRepo
-  /** Bare repo standing in for the upstream project (never written to by monolith). */
+  /** Bare repo standing in for the upstream project (never written to by monosplice). */
   upDir: string
   /** Working clone used to move upstream forward, like a maintainer would. */
   up: TestRepo
@@ -68,7 +68,7 @@ async function triFixture(opts: TriOptions = {}): Promise<Tri> {
 /** Fixture + `adopt`, i.e. the monorepo now tracks upstream at its current head. */
 async function adopted(opts: TriOptions = {}): Promise<Tri> {
   const fx = await triFixture(opts)
-  const res = await runMonolith(fx.mono.dir, ['adopt', 'lodash'])
+  const res = await runMonosplice(fx.mono.dir, ['adopt', 'lodash'])
   expect(res.exitCode, res.stderr).toBe(0)
   return fx
 }
@@ -79,7 +79,7 @@ async function patched(opts: TriOptions = {}): Promise<Tri & {forkHead: string; 
   fx.mono.write('vendor/lodash/index.js', 'module.exports = {patched: true}\n')
   await fx.mono.commit('fix(lodash): guard against a null prototype')
 
-  const res = await runMonolith(fx.mono.dir, ['push'])
+  const res = await runMonosplice(fx.mono.dir, ['push'])
   expect(res.exitCode, res.stderr).toBe(0)
   expect(res.stdout).toContain('exported 1 commit(s)')
 
@@ -110,7 +110,7 @@ describe('S110: import decisions come from upstream, never from the fork', () =>
     await up.commit('lodash: add zip', {'zip.js': 'exports.zip = 1\n'}, UP_AUTHOR)
     await up.git(['push', 'origin', 'main'])
 
-    const res = await runMonolith(mono.dir, ['pull'])
+    const res = await runMonosplice(mono.dir, ['pull'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toContain('imported 2 commit(s)')
 
@@ -119,9 +119,9 @@ describe('S110: import decisions come from upstream, never from the fork', () =>
 
     // The fork was never touched: no branch there, and no fork tracking ref locally.
     expect(await refs(fork)).toEqual([])
-    await expect(mono.git(['rev-parse', '--verify', 'refs/monolith/lodash/fork'])).rejects.toThrow()
+    await expect(mono.git(['rev-parse', '--verify', 'refs/monosplice/lodash/fork'])).rejects.toThrow()
 
-    const again = await runMonolith(mono.dir, ['pull'])
+    const again = await runMonosplice(mono.dir, ['pull'])
     expect(again.stdout).toContain('up to date')
   })
 
@@ -131,7 +131,7 @@ describe('S110: import decisions come from upstream, never from the fork', () =>
     await up.commit('lodash: add map', {'map.js': 'exports.map = 1\n'}, UP_AUTHOR)
     await up.git(['push', 'origin', 'main'])
 
-    const res = await runMonolith(mono.dir, ['pull'])
+    const res = await runMonosplice(mono.dir, ['pull'])
     expect(res.exitCode, res.stderr).toBe(0)
     // Exactly the one upstream commit — the fork's own patch commit is not import material.
     expect(res.stdout).toContain('imported 1 commit(s)')
@@ -152,7 +152,7 @@ describe('S111: push builds the fork branch on the upstream head', () => {
     mono.write('vendor/lodash/index.js', 'module.exports = {patched: true}\n')
     const patchSha = await mono.commit('fix(lodash): guard against a null prototype')
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toContain('exported 1 commit(s)')
     expect(res.stdout).toContain(forkDir)
@@ -167,11 +167,11 @@ describe('S111: push builds the fork branch on the upstream head', () => {
       'lodash: add chunk',
       'fix(lodash): guard against a null prototype',
     ])
-    expect(await fork.git(['log', '-1', '--format=%B', forkHead])).toContain(`Monolith-Source: ${patchSha}`)
+    expect(await fork.git(['log', '-1', '--format=%B', forkHead])).toContain(`Monosplice-Source: ${patchSha}`)
     expect(await fork.treeSha(forkHead)).toBe(await mono.treeSha('HEAD', 'vendor/lodash'))
 
     // Nothing was pushed to upstream, and a second push is a no-op on the fork.
-    const again = await runMonolith(mono.dir, ['push'])
+    const again = await runMonosplice(mono.dir, ['push'])
     expect(again.exitCode, again.stderr).toBe(0)
     expect(again.stdout).toContain('up to date')
     expect(await fork.git(['rev-parse', 'refs/heads/main'])).toBe(forkHead)
@@ -180,16 +180,16 @@ describe('S111: push builds the fork branch on the upstream head', () => {
   })
 
   it('honors pushBranch', async () => {
-    const {mono, fork} = await adopted({pushBranch: 'monolith/patches'})
+    const {mono, fork} = await adopted({pushBranch: 'monosplice/patches'})
     mono.write('vendor/lodash/index.js', 'module.exports = {patched: true}\n')
     await mono.commit('fix(lodash): guard against a null prototype')
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
-    expect(res.stdout).toContain('monolith/patches')
+    expect(res.stdout).toContain('monosplice/patches')
 
-    expect((await refs(fork)).map((l) => l.split(' ')[1])).toEqual(['refs/heads/monolith/patches'])
-    expect(await firstParents(fork, 'refs/heads/monolith/patches')).toEqual([
+    expect((await refs(fork)).map((l) => l.split(' ')[1])).toEqual(['refs/heads/monosplice/patches'])
+    expect(await firstParents(fork, 'refs/heads/monosplice/patches')).toEqual([
       'lodash: initial',
       'lodash: add chunk',
       'fix(lodash): guard against a null prototype',
@@ -205,7 +205,7 @@ describe('S112: upstream advances while local patches exist', () => {
     await up.git(['push', 'origin', 'main'])
     const newUpstreamHead = await up.git(['rev-parse', 'HEAD'])
 
-    const res = await runMonolith(mono.dir, ['sync'])
+    const res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/imported 1, exported \d+/)
 
@@ -230,7 +230,7 @@ describe('S112: upstream advances while local patches exist', () => {
     expect(await fork.fileAt(forkHead, 'index.js')).toBe('module.exports = {patched: true}')
     expect(await upstream.git(['rev-parse', 'refs/heads/main'])).toBe(newUpstreamHead)
 
-    const settle = await runMonolith(mono.dir, ['sync'])
+    const settle = await runMonosplice(mono.dir, ['sync'])
     expect(settle.exitCode, settle.stderr).toBe(0)
     expect(settle.stdout).toContain('up to date')
     expect(await fork.git(['rev-parse', 'refs/heads/main'])).toBe(forkHead)
@@ -244,7 +244,7 @@ describe('S113: no upstream configured — behavior is unchanged', () => {
     // A force push would be rejected outright, so anything that passes here is fast-forward.
     await pub.git(['config', 'receive.denyNonFastForwards', 'true'])
 
-    const first = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+    const first = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
     expect(first.exitCode, first.stderr).toBe(0)
     expect(first.stdout).toContain(`✓ core: published core/ to ${pubDir} (main) — one baseline commit`)
 
@@ -252,20 +252,20 @@ describe('S113: no upstream configured — behavior is unchanged', () => {
     await ext.commit('feat: external contribution', {'CONTRIB.md': 'thanks\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
 
-    const pull = await runMonolith(mono.dir, ['pull'])
+    const pull = await runMonosplice(mono.dir, ['pull'])
     expect(pull.exitCode, pull.stderr).toBe(0)
     expect(pull.stdout).toBe('✓ core: imported 1 commit(s)')
 
     await mono.commit('feat: local work', {'core/src/index.ts': 'export const hello = () => "hi"\n'})
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toBe('✓ core: exported 1 commit(s)')
 
-    const status = await runMonolith(mono.dir, ['status'])
+    const status = await runMonosplice(mono.dir, ['status'])
     expect(status.stdout).toBe('core: in sync')
     expect(status.stdout).not.toContain('awaiting')
 
-    const json = JSON.parse((await runMonolith(mono.dir, ['status', '--json'])).stdout) as {
+    const json = JSON.parse((await runMonosplice(mono.dir, ['status', '--json'])).stdout) as {
       subrepos: Array<Record<string, unknown>>
     }
     expect(Object.keys(json.subrepos[0]!).sort()).toEqual([
@@ -281,7 +281,7 @@ describe('S113: no upstream configured — behavior is unchanged', () => {
     ])
 
     // No fork machinery anywhere near a plain subrepo.
-    await expect(mono.git(['rev-parse', '--verify', 'refs/monolith/core/fork'])).rejects.toThrow()
+    await expect(mono.git(['rev-parse', '--verify', 'refs/monosplice/core/fork'])).rejects.toThrow()
     expect(await pub.treeSha('refs/heads/main')).toBe(await mono.treeSha('HEAD', 'core'))
   })
 })
@@ -295,7 +295,7 @@ describe('S114: unreachable upstream vs unreachable fork', () => {
     ])
 
     for (const args of [['status'], ['pull'], ['push'], ['doctor']]) {
-      const res = await runMonolith(fx.mono.dir, args)
+      const res = await runMonosplice(fx.mono.dir, args)
       const out = `${res.stdout}\n${res.stderr}`
       expect(res.exitCode, `${args[0]}: ${out}`).not.toBe(0)
       expect(out, args[0]).toContain('cannot reach upstream')
@@ -314,21 +314,21 @@ describe('S114: unreachable upstream vs unreachable fork', () => {
     // Pull only ever talks to upstream, so an unreachable fork cannot break it.
     await fx.up.commit('lodash: add map', {'map.js': 'exports.map = 1\n'}, UP_AUTHOR)
     await fx.up.git(['push', 'origin', 'main'])
-    const pull = await runMonolith(fx.mono.dir, ['pull'])
+    const pull = await runMonosplice(fx.mono.dir, ['pull'])
     expect(pull.exitCode, pull.stderr).toBe(0)
     expect(pull.stdout).toContain('imported 1 commit(s)')
 
     fx.mono.write('vendor/lodash/index.js', 'module.exports = {patched: true}\n')
     await fx.mono.commit('fix(lodash): guard against a null prototype')
 
-    const push = await runMonolith(fx.mono.dir, ['push'])
+    const push = await runMonosplice(fx.mono.dir, ['push'])
     const pushOut = `${push.stdout}\n${push.stderr}`
     expect(push.exitCode).not.toBe(0)
     expect(pushOut).toContain('fork')
     expect(pushOut).toContain(missing)
     expect(pushOut).not.toContain('cannot reach upstream')
 
-    const doctor = await runMonolith(fx.mono.dir, ['doctor'])
+    const doctor = await runMonosplice(fx.mono.dir, ['doctor'])
     const doctorOut = `${doctor.stdout}\n${doctor.stderr}`
     expect(doctor.exitCode).not.toBe(0)
     expect(doctorOut).toContain('cannot reach fork remote')
@@ -336,7 +336,7 @@ describe('S114: unreachable upstream vs unreachable fork', () => {
     expect(doctorOut).not.toContain('cannot reach upstream')
 
     // status still answers, measured against upstream, and says which side it could not see.
-    const status = await runMonolith(fx.mono.dir, ['status'])
+    const status = await runMonosplice(fx.mono.dir, ['status'])
     expect(status.exitCode, status.stderr).toBe(0)
     expect(status.stdout).toContain('1 to push')
     expect(status.stdout).toContain('cannot reach fork')
@@ -362,13 +362,13 @@ describe('S115: vendor --fork', () => {
     const fork = new TestRepo(forkDir)
     const upstreamRefs = await refs(upstream)
 
-    const res = await runMonolith(mono.dir, ['vendor', upDir, '--fork', forkDir])
+    const res = await runMonosplice(mono.dir, ['vendor', upDir, '--fork', forkDir])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toContain('✓ vendored lodash at vendor/lodash')
     expect(res.stdout).toContain(upDir)
     expect(res.stdout).toContain(forkDir)
 
-    const config = mono.read('monolith.config.ts')
+    const config = mono.read('monosplice.config.ts')
     expect(config).toContain(`remote: '${forkDir}'`)
     expect(config).toContain(`upstream: '${upDir}'`)
     expect(config).not.toContain('pushBranch')
@@ -376,17 +376,17 @@ describe('S115: vendor --fork', () => {
     // The vendored tree came from upstream, and the anchor commit names upstream.
     expect(await mono.treeSha('HEAD', 'vendor/lodash')).toBe(await upstream.treeSha('refs/heads/main'))
     const message = (await mono.messages()).at(-1)!
-    expect(message).toContain(`Monolith-Origin: ${await upstream.git(['rev-parse', 'refs/heads/main'])}`)
+    expect(message).toContain(`Monosplice-Origin: ${await upstream.git(['rev-parse', 'refs/heads/main'])}`)
     expect(message).toContain(upDir)
 
-    const status = await runMonolith(mono.dir, ['status'])
+    const status = await runMonosplice(mono.dir, ['status'])
     expect(status.stdout).toContain('lodash: in sync')
-    expect((await runMonolith(mono.dir, ['pull'])).stdout).toContain('up to date')
+    expect((await runMonosplice(mono.dir, ['pull'])).stdout).toContain('up to date')
     expect(await refs(fork)).toEqual([])
 
     mono.write('vendor/lodash/index.js', 'module.exports = {patched: true}\n')
     await mono.commit('fix(lodash): guard against a null prototype')
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toContain('exported 1 commit(s)')
     expect(await refs(upstream)).toEqual(upstreamRefs)
@@ -395,7 +395,7 @@ describe('S115: vendor --fork', () => {
 
   it('refuses to tag a subrepo that has an upstream', async () => {
     const {mono, forkDir} = await patched()
-    const res = await runMonolith(mono.dir, ['tag', 'lodash', 'v1.0.0'])
+    const res = await runMonosplice(mono.dir, ['tag', 'lodash', 'v1.0.0'])
     expect(res.exitCode).not.toBe(0)
     const out = `${res.stdout}\n${res.stderr}`
     expect(out).toContain('upstream')
@@ -413,18 +413,18 @@ describe('S116: the PR is merged upstream as a fast-forward', () => {
     await up.git(['push', 'origin', 'main'])
     expect(await upstream.git(['rev-parse', 'refs/heads/main'])).toBe(forkHead)
 
-    const pull = await runMonolith(mono.dir, ['pull'])
+    const pull = await runMonosplice(mono.dir, ['pull'])
     expect(pull.exitCode, pull.stderr).toBe(0)
     expect(pull.stdout).toContain('up to date')
 
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toContain('up to date')
 
-    const status = await runMonolith(mono.dir, ['status'])
+    const status = await runMonosplice(mono.dir, ['status'])
     expect(status.stdout).toContain('lodash: in sync')
 
-    const sync = await runMonolith(mono.dir, ['sync'])
+    const sync = await runMonosplice(mono.dir, ['sync'])
     expect(sync.exitCode, sync.stderr).toBe(0)
     expect(sync.stdout).toContain('up to date')
 
@@ -453,16 +453,16 @@ describe('S117: the PR is squash-merged upstream', () => {
     await up.git(['reset', '--hard', squash])
     await up.git(['push', 'origin', 'main'])
     const upstreamHead = await upstream.git(['rev-parse', 'refs/heads/main'])
-    expect(await up.git(['log', '-1', '--format=%B', 'HEAD'])).not.toContain('Monolith-')
+    expect(await up.git(['log', '-1', '--format=%B', 'HEAD'])).not.toContain('Monosplice-')
 
-    const pull = await runMonolith(mono.dir, ['pull'])
+    const pull = await runMonosplice(mono.dir, ['pull'])
     expect(pull.exitCode, pull.stderr).toBe(0)
     expect(pull.stdout).toContain('imported 1 commit(s)')
     expect((await mono.subjects()).length).toBe(monoCommitsBefore + 1)
-    expect((await mono.messages()).at(-1)).toContain(`Monolith-Origin: ${upstreamHead}`)
+    expect((await mono.messages()).at(-1)).toContain(`Monosplice-Origin: ${upstreamHead}`)
     expect(await mono.treeSha('HEAD', 'vendor/lodash')).toBe(await upstream.treeSha('refs/heads/main'))
 
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toContain('up to date')
 
@@ -470,13 +470,13 @@ describe('S117: the PR is squash-merged upstream', () => {
     expect(await upstream.git(['rev-parse', 'refs/heads/main'])).toBe(upstreamHead)
     expect(await fork.git(['rev-parse', 'refs/heads/main'])).toBe(forkHead)
 
-    const sync = await runMonolith(mono.dir, ['sync'])
+    const sync = await runMonosplice(mono.dir, ['sync'])
     expect(sync.exitCode, sync.stderr).toBe(0)
     expect(sync.stdout).toContain('up to date')
     expect(await upstream.git(['rev-parse', 'refs/heads/main'])).toBe(upstreamHead)
     expect(await fork.git(['rev-parse', 'refs/heads/main'])).toBe(forkHead)
 
-    const status = await runMonolith(mono.dir, ['status'])
+    const status = await runMonosplice(mono.dir, ['status'])
     expect(status.stdout).toContain('lodash: in sync')
   })
 })
@@ -489,12 +489,12 @@ describe('S118: status and doctor with an upstream', () => {
     await mono.commit('fix(lodash): guard against a null prototype')
 
     // Before the fork has them: a plain "to push".
-    let status = await runMonolith(mono.dir, ['status'])
+    let status = await runMonosplice(mono.dir, ['status'])
     expect(status.exitCode, status.stderr).toBe(0)
     expect(status.stdout).toContain('lodash: 1 to push')
     expect(status.stdout).not.toContain('awaiting')
 
-    let json = JSON.parse((await runMonolith(mono.dir, ['status', '--json'])).stdout) as {
+    let json = JSON.parse((await runMonosplice(mono.dir, ['status', '--json'])).stdout) as {
       subrepos: Array<Record<string, unknown>>
     }
     expect(Object.keys(json.subrepos[0]!).sort()).toEqual([
@@ -510,10 +510,10 @@ describe('S118: status and doctor with an upstream', () => {
     ])
     expect(json.subrepos[0]).toMatchObject({ahead: 1, behind: 0, remote: forkDir})
 
-    expect((await runMonolith(mono.dir, ['push'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['push'])).exitCode).toBe(0)
 
     // Once the fork carries them, the count is waiting on the maintainer, not on us.
-    status = await runMonolith(mono.dir, ['status'])
+    status = await runMonosplice(mono.dir, ['status'])
     expect(status.stdout).toContain('1 to push (awaiting upstream merge)')
 
     await up.commit('lodash: add map', {'map.js': 'exports.map = 1\n'}, UP_AUTHOR)
@@ -521,16 +521,16 @@ describe('S118: status and doctor with an upstream', () => {
 
     // Upstream moved, so the fork branch no longer matches what push would build: the note
     // drops and the honest report is "pull first, then I will rebuild your branch".
-    status = await runMonolith(mono.dir, ['status'])
+    status = await runMonosplice(mono.dir, ['status'])
     expect(status.stdout).toContain('lodash: 1 to push, 1 to pull')
     expect(status.stdout).not.toContain('awaiting')
 
-    json = JSON.parse((await runMonolith(mono.dir, ['status', '--json'])).stdout) as {
+    json = JSON.parse((await runMonosplice(mono.dir, ['status', '--json'])).stdout) as {
       subrepos: Array<Record<string, unknown>>
     }
     expect(json.subrepos[0]).toMatchObject({ahead: 1, behind: 1, inSync: false})
 
-    const doctor = await runMonolith(mono.dir, ['doctor'])
+    const doctor = await runMonosplice(mono.dir, ['doctor'])
     expect(doctor.exitCode, doctor.stderr).toBe(0)
     expect(doctor.stdout).toContain(`upstream:`)
     expect(doctor.stdout).toContain(upDir)

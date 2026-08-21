@@ -1,7 +1,7 @@
 import readline from 'node:readline/promises'
 import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
-import {MonolithCommand} from '../lib/base.js'
+import {MonospliceCommand} from '../lib/base.js'
 import {
   SubrepoFailure,
   exportSubrepo,
@@ -16,7 +16,7 @@ interface PushFlags {
   'full-history': boolean
 }
 
-export default class Push extends MonolithCommand {
+export default class Push extends MonospliceCommand {
   static description = 'Export new monorepo commits to the public subrepo remotes'
 
   static args = {
@@ -95,7 +95,7 @@ export default class Push extends MonolithCommand {
     if (flags['full-history']) {
       r.fail(
         `${subrepo.name}: --full-history only applies to the first publish, and ${subrepo.remote} already has a ${subrepo.branch} branch (${view.pubHead.slice(0, 10)}).
-Nothing was pushed. Run \`monolith push ${subrepo.name}\` to export new commits.`,
+Nothing was pushed. Run \`monosplice push ${subrepo.name}\` to export new commits.`,
       )
     }
 
@@ -134,8 +134,8 @@ Nothing was pushed. Run \`monolith push ${subrepo.name}\` to export new commits.
 
     r.fail(
       `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch — this would be the first publish of ${subrepo.path}/.
-Nothing was pushed. Publishing to a public remote cannot be undone, so monolith asks first; there is no terminal here to ask at. Run:
-  monolith push ${subrepo.name} --yes
+Nothing was pushed. Publishing to a public remote cannot be undone, so monosplice asks first; there is no terminal here to ask at. Run:
+  monosplice push ${subrepo.name} --yes
 Add --full-history to replay every monorepo commit that touched ${subrepo.path}/ instead of publishing one baseline commit.`,
     )
   }

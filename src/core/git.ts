@@ -277,7 +277,7 @@ export async function pushRef(cwd: string, remote: string, sha: string, dstRef: 
 }
 
 /**
- * Replace a remote ref, but only while it still holds `expect`. Used for the one ref monolith
+ * Replace a remote ref, but only while it still holds `expect`. Used for the one ref monosplice
  * owns outright — the fork's push branch, which is rebuilt from upstream on every push — so
  * that a rewrite still refuses when somebody else moved the branch in the meantime.
  */

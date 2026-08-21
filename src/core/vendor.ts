@@ -3,7 +3,7 @@ import {git, gitOk, revParse} from './git.js'
 
 /**
  * `vendor` is sugar: it derives a subrepo entry from a git URL, writes it into
- * monolith.config.ts, and hands the rest to the adopt machinery. Everything here is pure
+ * monosplice.config.ts, and hands the rest to the adopt machinery. Everything here is pure
  * text or read-only git, so the command can run every check before it writes a byte.
  */
 

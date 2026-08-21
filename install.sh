@@ -1,13 +1,11 @@
 #!/bin/sh
-# monolith installer — https://github.com/jakequist/monolith
+# monosplice installer — https://github.com/jakequist/monosplice
 #
-#   curl -fsSL https://raw.githubusercontent.com/jakequist/monolith/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/jakequist/monosplice/main/install.sh | sh
 #
-# Installs the latest GitHub release via npm. This is a thin convenience over:
-#   npm install -g https://github.com/jakequist/monolith/releases/latest/download/monolith.tgz
+# Installs the latest version from npm. This is a thin convenience over:
+#   npm install -g monosplice
 set -eu
-
-TARBALL_URL="https://github.com/jakequist/monolith/releases/latest/download/monolith.tgz"
 
 fail() {
   printf '%s\n' "install.sh: $1" >&2
@@ -21,13 +19,13 @@ command -v npm >/dev/null 2>&1 || fail "npm is required but was not found on PAT
 node_major=$(node -p 'process.versions.node.split(".")[0]')
 [ "$node_major" -ge 20 ] || fail "Node.js >= 20 is required; found $(node --version)."
 
-printf 'Installing monolith from the latest GitHub release…\n'
-npm install -g "$TARBALL_URL"
+printf 'Installing monosplice from npm…\n'
+npm install -g monosplice
 
-if command -v monolith >/dev/null 2>&1; then
-  printf '✓ installed: %s\n' "$(monolith --version)"
-  printf 'Get started: cd your-monorepo && monolith init\n'
+if command -v monosplice >/dev/null 2>&1; then
+  printf '✓ installed: %s\n' "$(monosplice --version)"
+  printf 'Get started: cd your-monorepo && monosplice init\n'
 else
-  printf '✓ installed, but `monolith` is not on your PATH yet.\n'
+  printf '✓ installed, but `monosplice` is not on your PATH yet.\n'
   printf 'Your npm global bin directory (%s) needs to be on PATH.\n' "$(npm prefix -g)/bin"
 fi

@@ -1,12 +1,12 @@
 import {Args} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
-import {MonolithCommand} from '../lib/base.js'
+import {MonospliceCommand} from '../lib/base.js'
 import {computeExports, planExport} from '../core/exporter.js'
 import {GitError, git, pushRef} from '../core/git.js'
 import type {SyncView} from '../core/sync.js'
 import {loadView, requirePublished} from '../lib/ops.js'
 
-export default class Tag extends MonolithCommand {
+export default class Tag extends MonospliceCommand {
   static description = 'Tag the public commit that corresponds to the current monorepo HEAD'
 
   static args = {
@@ -24,12 +24,12 @@ export default class Tag extends MonolithCommand {
     const root = project.root
     const reporter = this.reporter()
 
-    // A triangular subrepo has no commit monolith may tag: `remote` is a fork whose branch it
+    // A triangular subrepo has no commit monosplice may tag: `remote` is a fork whose branch it
     // rebuilds, and `upstream` belongs to someone else.
     if (subrepo.upstream !== undefined) {
       this.error(
         `${subrepo.name}: \`upstream\` is set, so ${subrepo.remote} is your fork and ${subrepo.upstream} is someone else's repository.
-Tags belong to the upstream maintainers, and monolith rebuilds the fork's ${subrepo.pushBranch} branch on every push, so a tag there would soon point at abandoned history. No tag was created.
+Tags belong to the upstream maintainers, and monosplice rebuilds the fork's ${subrepo.pushBranch} branch on every push, so a tag there would soon point at abandoned history. No tag was created.
 If you really want one on your fork, create it yourself:
   git push ${subrepo.remote} <sha>:refs/tags/${args.tag}`,
       )
@@ -72,7 +72,7 @@ If you really want one on your fork, create it yourself:
     this.error(
       `${subrepo.name}: ${planned.length} commit(s) have not been exported yet, so ${subrepo.remote} does not match monorepo HEAD.
 Tagging now would name a public commit that is missing that work. No tag was created.
-Run \`monolith push ${subrepo.name}\` first, then tag again.`,
+Run \`monosplice push ${subrepo.name}\` first, then tag again.`,
     )
   }
 
@@ -82,7 +82,7 @@ Run \`monolith push ${subrepo.name}\` first, then tag again.`,
     this.error(
       `${subrepo.name}: ${view.unreflectedPub.length} commit(s) on ${subrepo.remote} have not been imported yet.
 Tagging now would name public work the monorepo has never seen. No tag was created.
-Run \`monolith pull ${subrepo.name}\` first, then tag again.`,
+Run \`monosplice pull ${subrepo.name}\` first, then tag again.`,
     )
   }
 
@@ -100,7 +100,7 @@ Run \`monolith pull ${subrepo.name}\` first, then tag again.`,
     const sha = existing.split('\t')[0] ?? '(unknown)'
     this.error(
       `${subrepo.name}: tag ${tag} already exists on ${subrepo.remote} (${sha.slice(0, 10)}).
-Monolith never moves an existing public tag. Pick another name, or delete it yourself with:
+Monosplice never moves an existing public tag. Pick another name, or delete it yourself with:
   git push ${subrepo.remote} :refs/tags/${tag}`,
     )
   }

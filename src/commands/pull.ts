@@ -1,10 +1,10 @@
 import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
-import {MonolithCommand} from '../lib/base.js'
+import {MonospliceCommand} from '../lib/base.js'
 import {importSubrepo, pullInProgressMessage, reportImportFailure} from '../lib/ops.js'
 import {type PullSequencer, continueImport, readSequencer, unmergedPaths} from '../core/importer.js'
 
-export default class Pull extends MonolithCommand {
+export default class Pull extends MonospliceCommand {
   static description = 'Import new public subrepo commits into the monorepo'
 
   static args = {
@@ -33,7 +33,7 @@ export default class Pull extends MonolithCommand {
     if (flags.continue) {
       if (!state) {
         this.error(
-          'No pull is in progress — nothing to continue.\nRun `monolith pull` to import new public commits.',
+          'No pull is in progress — nothing to continue.\nRun `monosplice pull` to import new public commits.',
         )
       }
       await this.resume(root, project.subrepos, state)
@@ -58,7 +58,7 @@ export default class Pull extends MonolithCommand {
     const unmerged = await unmergedPaths(root)
     if (unmerged.length > 0) {
       this.error(
-        `${subrepo.name}: these files are still unmerged:\n${unmerged.map((f) => `  ${f}`).join('\n')}\nResolve them, \`git add\` each one, then run:\n  monolith pull --continue`,
+        `${subrepo.name}: these files are still unmerged:\n${unmerged.map((f) => `  ${f}`).join('\n')}\nResolve them, \`git add\` each one, then run:\n  monosplice pull --continue`,
       )
     }
 

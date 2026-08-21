@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest'
 import {resolveConfig} from '../../src/config.js'
 
-const CONFIG_PATH = '/repo/monolith.config.ts'
+const CONFIG_PATH = '/repo/monosplice.config.ts'
 
 describe('resolveConfig', () => {
   it('applies defaults (name from path basename, branch main)', () => {

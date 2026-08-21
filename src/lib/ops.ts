@@ -51,17 +51,17 @@ export async function loadView(root: string, subrepo: ResolvedSubrepo, r: Report
   })
 }
 
-/** Neither side has anything: the one matrix cell where no monolith command can help. */
+/** Neither side has anything: the one matrix cell where no monosplice command can help. */
 export function nothingExistsYet(subrepo: ResolvedSubrepo): string {
   return `${subrepo.name}: nothing exists yet — ${subrepo.path}/ has no committed files at HEAD, and ${pullSource(subrepo)} has no ${subrepo.branch} branch.
-Commit something under ${subrepo.path}/ and run \`monolith push ${subrepo.name} --yes\` to publish it, or run \`monolith adopt ${subrepo.name}\` once the remote has content.`
+Commit something under ${subrepo.path}/ and run \`monosplice push ${subrepo.name} --yes\` to publish it, or run \`monosplice adopt ${subrepo.name}\` once the remote has content.`
 }
 
 /** The public branch has history, but nothing on either side references the other. */
 export function unrelatedRemote(subrepo: ResolvedSubrepo, consequence: string): string {
   return `${subrepo.name}: ${pullSource(subrepo)} (${subrepo.branch}) has history that is unrelated to this monorepo — no commit on either side references the other.
 ${consequence} To connect the two repositories, run:
-  monolith adopt ${subrepo.name}`
+  monosplice adopt ${subrepo.name}`
 }
 
 /** Stop unless the public branch exists, distinguishing "not published" from "nothing at all". */
@@ -76,7 +76,7 @@ export async function requirePublished(
   const head = await revParse(root, 'HEAD')
   if (!head || !(await hasCommittedFiles(root, head, subrepo))) r.fail(nothingExistsYet(subrepo))
   r.fail(
-    `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch — this subrepo has not been published yet.\nRun \`monolith push ${subrepo.name} --yes\` to publish ${subrepo.path}/ for the first time.`,
+    `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch — this subrepo has not been published yet.\nRun \`monosplice push ${subrepo.name} --yes\` to publish ${subrepo.path}/ for the first time.`,
   )
 }
 
@@ -86,20 +86,20 @@ export async function requirePublished(
  * scratch would defeat the point of the triangle.
  */
 export function upstreamHasNoBranch(subrepo: ResolvedSubrepo): string {
-  return `${subrepo.name}: upstream ${subrepo.upstream} has no ${subrepo.branch} branch, so monolith has nothing to base the fork branch on.
+  return `${subrepo.name}: upstream ${subrepo.upstream} has no ${subrepo.branch} branch, so monosplice has nothing to base the fork branch on.
 Nothing was changed. Fix \`upstream\` or \`branch\` in your config, or drop \`upstream\` to publish ${subrepo.path}/ to ${subrepo.remote} directly:
-  monolith push ${subrepo.name} --yes`
+  monosplice push ${subrepo.name} --yes`
 }
 
 /** Shared by `pull` and `sync`: neither may start while a sequencer sits on disk. */
 export async function pullInProgressMessage(root: string, state: PullSequencer): Promise<string> {
-  return `A pull of ${state.subrepo} is already in progress.\nResolve the conflict, \`git add\` the files, then run:\n  monolith pull --continue\nTo abort instead, delete ${await sequencerPath(root)}.`
+  return `A pull of ${state.subrepo} is already in progress.\nResolve the conflict, \`git add\` the files, then run:\n  monosplice pull --continue\nTo abort instead, delete ${await sequencerPath(root)}.`
 }
 
 export function reportImportFailure(subrepo: ResolvedSubrepo, err: unknown, r: Reporter): never {
   if (err instanceof ImportConflictError) {
     r.fail(
-      `${subrepo.name}: importing ${err.pubSha.slice(0, 10)} conflicts with local changes.\nConflicted files:\n${err.conflicts.map((f) => `  ${f}`).join('\n')}\nEdit each file to resolve the markers, \`git add\` it, then run:\n  monolith pull --continue\nTo abort instead, delete ${err.statePath}.`,
+      `${subrepo.name}: importing ${err.pubSha.slice(0, 10)} conflicts with local changes.\nConflicted files:\n${err.conflicts.map((f) => `  ${f}`).join('\n')}\nEdit each file to resolve the markers, \`git add\` it, then run:\n  monosplice pull --continue\nTo abort instead, delete ${err.statePath}.`,
     )
   }
   if (err instanceof GitError) r.fail(`${subrepo.name}: ${err.message}`)
@@ -149,7 +149,7 @@ export async function exportSubrepo(
 
   if (view.unreflectedPub.length > 0) {
     r.fail(
-      `${subrepo.name}: ${view.unreflectedPub.length} commit(s) on ${pullSource(subrepo)} have not been imported yet.\nNothing was pushed. Run \`monolith pull ${subrepo.name}\` first, then push again.`,
+      `${subrepo.name}: ${view.unreflectedPub.length} commit(s) on ${pullSource(subrepo)} have not been imported yet.\nNothing was pushed. Run \`monosplice pull ${subrepo.name}\` first, then push again.`,
     )
   }
 
@@ -159,7 +159,7 @@ export async function exportSubrepo(
     // fork's — never upstream's, which this code path does not write to at all.
     if (subrepo.upstream !== undefined && err instanceof GitError) {
       r.fail(
-        `${subrepo.name}: cannot push to fork remote ${subrepo.remote} (${subrepo.pushBranch})\n${err.stderr || err.message}\nNothing was pushed. Fix \`remote\` in your config or your network/credentials, then run \`monolith push ${subrepo.name}\` again.`,
+        `${subrepo.name}: cannot push to fork remote ${subrepo.remote} (${subrepo.pushBranch})\n${err.stderr || err.message}\nNothing was pushed. Fix \`remote\` in your config or your network/credentials, then run \`monosplice push ${subrepo.name}\` again.`,
       )
     }
     if (err instanceof GitError) r.fail(`${subrepo.name}: ${err.message}`)

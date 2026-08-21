@@ -15,17 +15,17 @@ import {ORIGIN_TRAILER, SOURCE_TRAILER} from './trailers.js'
 
 /** Where a subrepo's public branch is mirrored inside the monorepo's object db. */
 export function remoteTrackingRef(name: string): string {
-  return `refs/monolith/${name}/remote`
+  return `refs/monosplice/${name}/remote`
 }
 
 /** Where the fork's push branch is mirrored (triangular mode only). */
 export function forkTrackingRef(name: string): string {
-  return `refs/monolith/${name}/fork`
+  return `refs/monosplice/${name}/fork`
 }
 
 /**
  * The repository every sync decision is made against. With `upstream` configured that is
- * upstream and only upstream: the fork is a derived artifact monolith rebuilds, so consulting
+ * upstream and only upstream: the fork is a derived artifact monosplice rebuilds, so consulting
  * it for imports or anchors would let our own exports masquerade as public history.
  */
 export function pullSource(subrepo: ResolvedSubrepo): string {
@@ -79,14 +79,14 @@ export interface SyncView {
   trackingRef: string
   /** Public branch head, or null when the remote branch does not exist yet. */
   pubHead: string | null
-  /** monorepo sha -> public sha, derived from `Monolith-Source` trailers in pub history. */
+  /** monorepo sha -> public sha, derived from `Monosplice-Source` trailers in pub history. */
   exportedMonoToPub: Map<string, string>
-  /** Public shas already imported into the monorepo, from `Monolith-Origin` trailers on HEAD. */
+  /** Public shas already imported into the monorepo, from `Monosplice-Origin` trailers on HEAD. */
   importedPubShas: Set<string>
   /**
    * Where the export scan starts: the newest commit on the HEAD walk that is either already
-   * exported (`Monolith-Source` names it) or anchors the monorepo to the public branch
-   * (`Monolith-Origin` naming pub head or one of its ancestors). Export scans
+   * exported (`Monosplice-Source` names it) or anchors the monorepo to the public branch
+   * (`Monosplice-Origin` naming pub head or one of its ancestors). Export scans
    * `exportBase..HEAD`; null means "scan all of HEAD" (nothing published yet).
    */
   exportBase: string | null
@@ -99,14 +99,14 @@ export interface SyncView {
   /** Public commits that are neither our exports nor already reflected (oldest first). */
   unreflectedPub: string[]
   /**
-   * `Monolith-Source` trailers in pub history naming monorepo commits that are not in
+   * `Monosplice-Source` trailers in pub history naming monorepo commits that are not in
    * this clone. The mapping cannot be trusted while any exist, so export refuses.
    */
   brokenSourceRefs: BrokenSourceRef[]
   /**
    * Do the two repos know about each other at all? False means first contact: the public
    * branch has history, but nothing on either side references the other, so the only safe
-   * move is `monolith adopt`.
+   * move is `monosplice adopt`.
    */
   related: boolean
 }
@@ -147,8 +147,8 @@ async function reflectsExactly(
 /**
  * Walk monorepo history from HEAD and stop at the first commit whose publishable subtree the
  * public branch already contains. Two ways to qualify: pub says it exported this commit
- * (`Monolith-Source`), or the commit imported public work and reproduces it exactly
- * (`Monolith-Origin`) — the second is what stops a `push` right after an `adopt` from
+ * (`Monosplice-Source`), or the commit imported public work and reproduces it exactly
+ * (`Monosplice-Origin`) — the second is what stops a `push` right after an `adopt` from
  * replaying the monorepo's entire pre-adoption history onto the adopted repo.
  *
  * One `rev-list` for the walk, then O(1) lookups: both trailer maps are already in hand and

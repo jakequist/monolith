@@ -36,7 +36,7 @@ export function nextDate(): string {
 
 /** Temp directory removed when the current test finishes. */
 export function sandbox(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'monolith-e2e-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'monosplice-e2e-'))
   onTestFinished(() => {
     fs.rmSync(dir, {recursive: true, force: true})
   })
@@ -49,8 +49,8 @@ export interface RunResult {
   exitCode: number
 }
 
-/** Run the built monolith CLI (black-box) in a directory. Never throws on non-zero exit. */
-export async function runMonolith(cwd: string, args: string[], env: Record<string, string> = {}): Promise<RunResult> {
+/** Run the built monosplice CLI (black-box) in a directory. Never throws on non-zero exit. */
+export async function runMonosplice(cwd: string, args: string[], env: Record<string, string> = {}): Promise<RunResult> {
   const res = await execa('node', [BIN, ...args], {
     cwd,
     env: {...GIT_ENV, ...env},
@@ -185,14 +185,14 @@ export async function cloneRemote(root: string, remoteDir: string, name: string)
 }
 
 /**
- * Write monolith.config.ts. `subrepos` entries are emitted verbatim when given
+ * Write monosplice.config.ts. `subrepos` entries are emitted verbatim when given
  * as strings (to allow function-valued hooks), or JSON-serialized objects.
  */
 export function writeConfig(repo: TestRepo, subrepos: Array<Record<string, unknown> | string>): void {
   const entries = subrepos
     .map((s) => (typeof s === 'string' ? s : JSON.stringify(s, null, 2)))
     .join(',\n')
-  repo.write('monolith.config.ts', `export default {\n  subrepos: [\n${entries}\n  ],\n}\n`)
+  repo.write('monosplice.config.ts', `export default {\n  subrepos: [\n${entries}\n  ],\n}\n`)
 }
 
 /**

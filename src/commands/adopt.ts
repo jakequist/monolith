@@ -1,6 +1,6 @@
 import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
-import {MonolithCommand} from '../lib/base.js'
+import {MonospliceCommand} from '../lib/base.js'
 import {applyTreeInto, commitAdopt, differingPaths} from '../core/adopt.js'
 import {filteredSubtree, hasCommittedFiles} from '../core/filter.js'
 import {EMPTY_TREE, git, revParse} from '../core/git.js'
@@ -14,7 +14,7 @@ import {
   type Reporter,
 } from '../lib/ops.js'
 
-export default class Adopt extends MonolithCommand {
+export default class Adopt extends MonospliceCommand {
   static description = 'Connect a subrepo to a public remote that already has its own history'
 
   static args = {
@@ -50,7 +50,7 @@ export default class Adopt extends MonolithCommand {
     // not after a fetch has already written a tracking ref.
     const state = await readSequencer(root)
     if (state) this.error(await pullInProgressMessage(root, state))
-    const problem = await checkImportPreconditions(root, subrepo, `monolith adopt ${subrepo.name}`)
+    const problem = await checkImportPreconditions(root, subrepo, `monosplice adopt ${subrepo.name}`)
     if (problem) this.error(problem)
 
     const view = await loadView(root, subrepo, r)
@@ -79,13 +79,13 @@ export default class Adopt extends MonolithCommand {
       if (!head || !(await hasCommittedFiles(root, head, subrepo))) this.error(nothingExistsYet(subrepo))
       this.error(
         `${subrepo.name}: ${pullSource(subrepo)} has no ${subrepo.branch} branch, so there is nothing to adopt.
-Run \`monolith push ${subrepo.name} --yes\` to publish ${subrepo.path}/ instead.`,
+Run \`monosplice push ${subrepo.name} --yes\` to publish ${subrepo.path}/ instead.`,
       )
     }
     if (view.related) {
       this.error(
-        `${subrepo.name}: already connected to ${pullSource(subrepo)} — monolith trailers already link the two repositories, so there is nothing to adopt.
-Nothing was changed. Run \`monolith pull ${subrepo.name}\` to import new public commits, \`monolith push ${subrepo.name}\` to export new monorepo commits, or \`monolith sync ${subrepo.name}\` for both.`,
+        `${subrepo.name}: already connected to ${pullSource(subrepo)} — monosplice trailers already link the two repositories, so there is nothing to adopt.
+Nothing was changed. Run \`monosplice pull ${subrepo.name}\` to import new public commits, \`monosplice push ${subrepo.name}\` to export new monorepo commits, or \`monosplice sync ${subrepo.name}\` for both.`,
       )
     }
     return view.pubHead
@@ -125,7 +125,7 @@ Nothing was changed. Run \`monolith pull ${subrepo.name}\` to import new public 
     if (flags.history) {
       this.error(
         `${subrepo.name}: --history replays the public history into an empty path, but ${subrepo.path}/ already has committed files.
-Nothing was changed. Run \`monolith adopt ${subrepo.name}\` (add --theirs if the public tree should win).`,
+Nothing was changed. Run \`monosplice adopt ${subrepo.name}\` (add --theirs if the public tree should win).`,
       )
     }
 
@@ -139,8 +139,8 @@ Nothing was changed. Run \`monolith adopt ${subrepo.name}\` (add --theirs if the
       this.error(
         `${subrepo.name}: ${subrepo.path}/ and ${pullSource(subrepo)} (${subrepo.branch}) both have content, and their trees differ:
 ${paths.map((p) => `  ${p}`).join('\n')}
-Nothing was changed. Either make the two trees match and run \`monolith adopt ${subrepo.name}\` again, or take the public tree wholesale:
-  monolith adopt ${subrepo.name} --theirs`,
+Nothing was changed. Either make the two trees match and run \`monosplice adopt ${subrepo.name}\` again, or take the public tree wholesale:
+  monosplice adopt ${subrepo.name} --theirs`,
       )
     }
 

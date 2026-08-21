@@ -1,9 +1,9 @@
 import {Args} from '@oclif/core'
-import {MonolithCommand} from '../lib/base.js'
+import {MonospliceCommand} from '../lib/base.js'
 import {readSequencer} from '../core/importer.js'
 import {exportSubrepo, importSubrepo, pullInProgressMessage} from '../lib/ops.js'
 
-export default class Sync extends MonolithCommand {
+export default class Sync extends MonospliceCommand {
   static description = 'Pull then push each subrepo, converging the monorepo with its public remotes'
 
   static args = {

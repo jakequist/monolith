@@ -1,17 +1,17 @@
 {
-  "name": "monolith",
-  "version": "0.2.0",
+  "name": "monosplice",
+  "version": "0.3.0",
   "description": "Ergonomic bidirectional sync between a private monorepo and public subrepos. Submodule accuracy without submodule pain.",
   "keywords": ["git", "monorepo", "subtree", "submodule", "open-source", "sync", "copybara"],
   "license": "MIT",
   "author": "Jake Quist",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jakequist/monolith.git"
+    "url": "https://github.com/jakequist/monosplice.git"
   },
   "type": "module",
   "bin": {
-    "monolith": "./bin/run.js"
+    "monosplice": "./bin/run.js"
   },
   "files": ["bin", "dist", "oclif.manifest.json"],
   "engines": {
@@ -26,8 +26,8 @@
     "test:all": "pnpm build && vitest run"
   },
   "oclif": {
-    "bin": "monolith",
-    "dirname": "monolith",
+    "bin": "monosplice",
+    "dirname": "monosplice",
     "commands": "./dist/commands",
     "topicSeparator": " "
   },

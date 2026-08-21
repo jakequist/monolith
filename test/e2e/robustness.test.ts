@@ -4,7 +4,7 @@ import {
   TestRepo,
   cloneRemote,
   makeRepo,
-  runMonolith,
+  runMonosplice,
   sandbox,
   standardFixture,
   writeConfig,
@@ -12,30 +12,30 @@ import {
 
 async function seeded(): Promise<{root: string; mono: TestRepo; pubDir: string; pub: TestRepo}> {
   const {root, mono, pubDir} = await standardFixture()
-  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+  const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   return {root, mono, pubDir, pub: new TestRepo(pubDir)}
 }
 
-describe('S80: running outside a monolith-configured repo', () => {
-  it('fails with a helpful error naming the config file and `monolith init`', async () => {
+describe('S80: running outside a monosplice-configured repo', () => {
+  it('fails with a helpful error naming the config file and `monosplice init`', async () => {
     const root = sandbox()
     const plain = await makeRepo(root, 'plain')
 
     for (const args of [['status'], ['push'], ['pull'], ['doctor']]) {
-      const res = await runMonolith(plain.dir, args)
+      const res = await runMonosplice(plain.dir, args)
       expect(res.exitCode, `${args[0]} should have failed`).not.toBe(0)
-      expect(res.stderr).toContain('monolith.config')
-      expect(res.stderr).toContain('monolith init')
+      expect(res.stderr).toContain('monosplice.config')
+      expect(res.stderr).toContain('monosplice init')
     }
   })
 
   it('fails the same way in a directory that is not a git repo at all', async () => {
     const root = sandbox()
-    const res = await runMonolith(root, ['status'])
+    const res = await runMonosplice(root, ['status'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toContain('monolith.config')
-    expect(res.stderr).toContain('monolith init')
+    expect(res.stderr).toContain('monosplice.config')
+    expect(res.stderr).toContain('monosplice init')
   })
 })
 
@@ -44,10 +44,10 @@ describe('S81: invalid config', () => {
     const {mono, pubDir} = await seeded()
     writeConfig(mono, [`    { name: 'core', path: '/', remote: ${JSON.stringify(pubDir)} }`])
 
-    const res = await runMonolith(mono.dir, ['status'])
+    const res = await runMonosplice(mono.dir, ['status'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('subrepos.0.path')
-    expect(res.stderr).toContain(path.join(mono.dir, 'monolith.config.ts'))
+    expect(res.stderr).toContain(path.join(mono.dir, 'monosplice.config.ts'))
     expect(res.stderr).toMatch(/repo root/)
   })
 
@@ -55,11 +55,11 @@ describe('S81: invalid config', () => {
     const {mono} = await seeded()
     writeConfig(mono, [`    { name: 'core', path: 'core' }`])
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('subrepos.0.remote')
     expect(res.stderr).toContain('remote is required')
-    expect(res.stderr).toContain(path.join(mono.dir, 'monolith.config.ts'))
+    expect(res.stderr).toContain(path.join(mono.dir, 'monosplice.config.ts'))
   })
 
   it('rejects a malformed exclude entry and names it', async () => {
@@ -68,19 +68,19 @@ describe('S81: invalid config', () => {
       `    { name: 'core', path: 'core', remote: ${JSON.stringify(pubDir)}, exclude: [''] }`,
     ])
 
-    const res = await runMonolith(mono.dir, ['status'])
+    const res = await runMonosplice(mono.dir, ['status'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('subrepos.0.exclude.0')
   })
 
   it('reports a config that throws on load as "failed to load", naming the file', async () => {
     const {mono} = await seeded()
-    mono.write('monolith.config.ts', 'export default {subrepos: [ this is not valid ts ,,, ]\n')
+    mono.write('monosplice.config.ts', 'export default {subrepos: [ this is not valid ts ,,, ]\n')
 
-    const res = await runMonolith(mono.dir, ['status'])
+    const res = await runMonosplice(mono.dir, ['status'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('failed to load')
-    expect(res.stderr).toContain(path.join(mono.dir, 'monolith.config.ts'))
+    expect(res.stderr).toContain(path.join(mono.dir, 'monosplice.config.ts'))
   })
 })
 
@@ -92,13 +92,13 @@ describe('S82: unreachable remote', () => {
     const headBefore = await mono.head()
 
     for (const args of [['pull'], ['status']]) {
-      const res = await runMonolith(mono.dir, args)
+      const res = await runMonosplice(mono.dir, args)
       expect(res.exitCode, `${args[0]} should have failed`).not.toBe(0)
       expect(res.stderr).toContain('cannot reach remote')
       expect(res.stderr).toContain('gone.git')
     }
 
-    const doctor = await runMonolith(mono.dir, ['doctor'])
+    const doctor = await runMonosplice(mono.dir, ['doctor'])
     expect(doctor.exitCode).not.toBe(0)
     expect(doctor.stdout).toContain('gone.git')
 
@@ -122,7 +122,7 @@ describe('S83: .gitignore handling', () => {
     await mono.git(['add', '-f', 'core/debug.log'])
     await mono.commit('chore: keep a sample log')
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const paths = (await pub.treeEntries('HEAD')).map((e) => e.split(' ')[2]).sort()
@@ -143,7 +143,7 @@ describe('S84: unicode round-trip', () => {
     const {mono, pub} = await seeded()
     await mono.commit('feat: 追加 émoji 🎉 support', {[`core/${fileName}`]: content})
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
@@ -163,7 +163,7 @@ describe('S84: unicode round-trip', () => {
     await ext.git(['push', 'origin', 'main'])
     const extSha = await ext.head()
 
-    const res = await runMonolith(mono.dir, ['pull'])
+    const res = await runMonosplice(mono.dir, ['pull'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/imported 1 commit/)
 
@@ -171,10 +171,10 @@ describe('S84: unicode round-trip', () => {
     const subjects = await mono.subjects()
     expect(subjects[subjects.length - 1]).toBe('外部: añadir 🚀 docs')
     const messages = await mono.messages()
-    expect(messages[messages.length - 1]).toContain(`Monolith-Origin: ${extSha}`)
+    expect(messages[messages.length - 1]).toContain(`Monosplice-Origin: ${extSha}`)
 
     // …and the round trip back out is a no-op, byte for byte.
-    const back = await runMonolith(mono.dir, ['push'])
+    const back = await runMonosplice(mono.dir, ['push'])
     expect(back.exitCode, back.stderr).toBe(0)
     expect(back.stdout).toMatch(/up to date/)
     expect(await new TestRepo(pubDir).treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))

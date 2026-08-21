@@ -3,7 +3,7 @@ import {ConfigError, loadProject, type Project, type ResolvedSubrepo} from '../c
 import {gitOk} from '../core/git.js'
 import type {Reporter} from './ops.js'
 
-export abstract class MonolithCommand extends Command {
+export abstract class MonospliceCommand extends Command {
   /** Adapter so `src/lib/ops.ts` can report without depending on oclif. */
   protected reporter(): Reporter {
     return {
@@ -24,7 +24,7 @@ export abstract class MonolithCommand extends Command {
     }
     if (!project) {
       this.error(
-        'No monolith config found. Run this inside a repo containing monolith.config.ts, or run `monolith init` to create one.',
+        'No monosplice config found. Run this inside a repo containing monosplice.config.ts, or run `monosplice init` to create one.',
       )
     }
     if (!(await gitOk(project.root, ['rev-parse', '--is-inside-work-tree']))) {

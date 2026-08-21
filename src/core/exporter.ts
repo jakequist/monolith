@@ -59,7 +59,7 @@ export interface ExportOptions {
  * Monorepo commits eligible for export: everything touching the subrepo path since the
  * derived base, minus commits already exported.
  *
- * Imported commits (`Monolith-Origin`) are deliberately NOT filtered here. A pure import
+ * Imported commits (`Monosplice-Origin`) are deliberately NOT filtered here. A pure import
  * reproduces the public tip's tree, so `runExport`'s tree-equality check drops it; a
  * *conflicted* import carries the user's merge resolution and must be exported, or
  * `pub tree == filtered(mono HEAD)` would stop holding.
@@ -179,7 +179,7 @@ export async function buildExportChain(
  * never leave a partially published branch behind.
  *
  * In triangular mode the chain is parented on the UPSTREAM head and lands on the fork's
- * `pushBranch`: a linear, PR-ready branch that monolith owns and rebuilds. Upstream is never
+ * `pushBranch`: a linear, PR-ready branch that monosplice owns and rebuilds. Upstream is never
  * written to, and the upstream tracking ref is never moved to something upstream does not have.
  */
 export async function runExport(
@@ -275,14 +275,14 @@ export async function checkExportPreconditions(
   const broken = view.brokenSourceRefs[0]
   if (broken) {
     return `${subrepo.name}: public commit ${broken.pubSha} carries ${SOURCE_TRAILER}: ${broken.monoSha}, but that monorepo commit does not exist in this clone.
-The commit mapping is broken, so monolith cannot tell what is already published and will not export on top of it. Nothing was pushed to ${subrepo.remote}.
-Run \`monolith doctor\` to see the full picture.`
+The commit mapping is broken, so monosplice cannot tell what is already published and will not export on top of it. Nothing was pushed to ${subrepo.remote}.
+Run \`monosplice doctor\` to see the full picture.`
   }
 
   if (await exportBaseRewritten(root, view)) {
     return `${subrepo.name}: the last exported monorepo commit ${view.lastExportedMono} is no longer an ancestor of HEAD.
-Monorepo history was rewritten (rebase, amend or force-push) underneath it, so monolith cannot tell which commits are new. Nothing was pushed to ${subrepo.remote}.
-Run \`monolith doctor\` for details, then restore that commit (\`git reflog\`) before pushing again.`
+Monorepo history was rewritten (rebase, amend or force-push) underneath it, so monosplice cannot tell which commits are new. Nothing was pushed to ${subrepo.remote}.
+Run \`monosplice doctor\` for details, then restore that commit (\`git reflog\`) before pushing again.`
   }
 
   return null

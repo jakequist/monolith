@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {describe, expect, it} from 'vitest'
-import {TestRepo, cloneRemote, runMonolith, standardFixture} from './harness.js'
+import {TestRepo, cloneRemote, runMonosplice, standardFixture} from './harness.js'
 
 const EXT_AUTHOR = {authorName: 'Ext Contributor', authorEmail: 'ext@example.test'}
 
@@ -13,7 +13,7 @@ async function seededWithExternal(opts: {configExtra?: string} = {}): Promise<{
   ext: TestRepo
 }> {
   const {root, mono, pubDir} = await standardFixture(opts)
-  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+  const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   const ext = await cloneRemote(root, pubDir, 'ext')
   return {root, mono, pub: new TestRepo(pubDir), pubDir, ext}
@@ -35,21 +35,21 @@ describe('S51: cursors derive from trailers, not from state on disk', () => {
     const {mono, pub, ext} = await seededWithExternal()
 
     await mono.commit('feat: one', {'core/one.txt': '1\n'})
-    expect((await runMonolith(mono.dir, ['push'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['push'])).exitCode).toBe(0)
 
     await ext.git(['fetch', 'origin'])
     await ext.git(['reset', '--hard', 'origin/main'])
     await ext.commit('external: two', {'two.txt': '2\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
-    expect((await runMonolith(mono.dir, ['pull'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['pull'])).exitCode).toBe(0)
 
     await mono.commit('feat: three', {'core/three.txt': '3\n'})
-    expect((await runMonolith(mono.dir, ['push'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['push'])).exitCode).toBe(0)
 
     const monoHead = await mono.head()
     const pubHead = await pub.head()
 
-    const doc = await runMonolith(mono.dir, ['doctor'])
+    const doc = await runMonosplice(mono.dir, ['doctor'])
     expect(doc.exitCode, `${doc.stdout}\n${doc.stderr}`).toBe(0)
     expect(doc.stdout).toMatch(/all checks passed/)
     expect(doc.stdout).toContain('core')
@@ -61,10 +61,10 @@ describe('S51: cursors derive from trailers, not from state on disk', () => {
 
     // no state file, by design
     const files = workTreeFiles(mono.dir)
-    expect(files).not.toContain('.monolith')
-    expect(files.some((f) => f.startsWith('.monolith/'))).toBe(false)
+    expect(files).not.toContain('.monosplice')
+    expect(files.some((f) => f.startsWith('.monosplice/'))).toBe(false)
     expect(files.some((f) => path.basename(f) === 'state.json')).toBe(false)
-    expect(fs.existsSync(path.join(mono.dir, '.monolith'))).toBe(false)
+    expect(fs.existsSync(path.join(mono.dir, '.monosplice'))).toBe(false)
   })
 })
 
@@ -74,7 +74,7 @@ describe('S52: broken commit mapping', () => {
     const ghost = 'ab'.repeat(20)
 
     await ext.commit(
-      `external: forged mapping\n\nMonolith-Source: ${ghost}`,
+      `external: forged mapping\n\nMonosplice-Source: ${ghost}`,
       {'forged.txt': 'from nowhere\n'},
       EXT_AUTHOR,
     )
@@ -83,16 +83,16 @@ describe('S52: broken commit mapping', () => {
     const pubHeadBefore = await pub.head()
     const pubSubjectsBefore = await pub.subjects()
 
-    const doc = await runMonolith(mono.dir, ['doctor'])
+    const doc = await runMonosplice(mono.dir, ['doctor'])
     expect(doc.exitCode).toBe(1)
     expect(doc.stdout).toContain(ghost)
     expect(doc.stdout).toContain(forgedPubSha)
-    expect(doc.stdout).toMatch(/Monolith-Source/)
+    expect(doc.stdout).toMatch(/Monosplice-Source/)
     expect(doc.stdout).toMatch(/does not exist/i)
 
     // A pending local commit must NOT be exported on top of a mapping we cannot trust.
     await mono.commit('feat: local work', {'core/local.txt': 'local\n'})
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode).not.toBe(0)
     expect(push.stderr).toContain(ghost)
     expect(push.stderr).toMatch(/doctor/)
@@ -108,27 +108,27 @@ describe('S53: fresh clone on a second machine', () => {
     const {root, mono, pub, pubDir, ext} = await seededWithExternal()
 
     // The config is committed, which is what makes a fresh clone self-sufficient.
-    expect(await mono.fileAt('HEAD', 'monolith.config.ts')).toContain('subrepos')
+    expect(await mono.fileAt('HEAD', 'monosplice.config.ts')).toContain('subrepos')
 
     await mono.commit('feat: first machine', {'core/first.txt': '1\n'})
-    expect((await runMonolith(mono.dir, ['push'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['push'])).exitCode).toBe(0)
 
     await ext.git(['fetch', 'origin'])
     await ext.git(['reset', '--hard', 'origin/main'])
     await ext.commit('external: before the clone', {'before.txt': 'b\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
-    expect((await runMonolith(mono.dir, ['pull'])).exitCode).toBe(0)
-    expect((await runMonolith(mono.dir, ['push'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['pull'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['push'])).exitCode).toBe(0)
 
-    // "Second machine": a plain clone of the monorepo, no monolith state carried over.
+    // "Second machine": a plain clone of the monorepo, no monosplice state carried over.
     const mono2 = await cloneRemote(root, mono.dir, 'mono2')
-    expect(fs.existsSync(path.join(mono2.dir, '.monolith'))).toBe(false)
+    expect(fs.existsSync(path.join(mono2.dir, '.monosplice'))).toBe(false)
 
-    const st = await runMonolith(mono2.dir, ['status'])
+    const st = await runMonosplice(mono2.dir, ['status'])
     expect(st.exitCode, st.stderr).toBe(0)
     expect(st.stdout).toMatch(/core: in sync/)
 
-    const doc = await runMonolith(mono2.dir, ['doctor'])
+    const doc = await runMonosplice(mono2.dir, ['doctor'])
     expect(doc.exitCode, `${doc.stdout}\n${doc.stderr}`).toBe(0)
 
     // A full round from the fresh clone.
@@ -136,12 +136,12 @@ describe('S53: fresh clone on a second machine', () => {
     await ext2.commit('external: after the clone', {'after.txt': 'a\n'}, EXT_AUTHOR)
     await ext2.git(['push', 'origin', 'main'])
 
-    const pull = await runMonolith(mono2.dir, ['pull'])
+    const pull = await runMonosplice(mono2.dir, ['pull'])
     expect(pull.exitCode, pull.stderr).toBe(0)
     expect(pull.stdout).toMatch(/imported 1/)
 
     await mono2.commit('feat: second machine', {'core/second.txt': '2\n'})
-    const push = await runMonolith(mono2.dir, ['push'])
+    const push = await runMonosplice(mono2.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toMatch(/exported/)
 
@@ -155,7 +155,7 @@ describe('S54: rewritten monorepo history', () => {
     const {mono, pub} = await seededWithExternal()
 
     await mono.commit('feat: exported', {'core/x.txt': 'x\n'})
-    const first = await runMonolith(mono.dir, ['push'])
+    const first = await runMonosplice(mono.dir, ['push'])
     expect(first.exitCode, first.stderr).toBe(0)
     const exportedMonoSha = await mono.head()
     const pubHead = await pub.head()
@@ -165,7 +165,7 @@ describe('S54: rewritten monorepo history', () => {
     await mono.git(['reset', '--hard', 'HEAD~1'])
     await mono.commit('feat: rewritten', {'core/y.txt': 'y\n'})
 
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode).not.toBe(0)
     expect(push.stderr).toContain(exportedMonoSha)
     expect(push.stderr).toMatch(/rewritten/i)
@@ -173,7 +173,7 @@ describe('S54: rewritten monorepo history', () => {
     expect(await pub.head()).toBe(pubHead)
     expect(await pub.subjects()).toEqual(pubSubjects)
 
-    const doc = await runMonolith(mono.dir, ['doctor'])
+    const doc = await runMonosplice(mono.dir, ['doctor'])
     expect(doc.exitCode).toBe(1)
     expect(doc.stdout).toContain(exportedMonoSha)
     expect(doc.stdout).toMatch(/rewritten|ancestor/i)
@@ -187,10 +187,10 @@ describe('doctor housekeeping', () => {
     await ext.commit('docs: ext wording', {'README.md': '# core\n\next wording\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
 
-    const conflicted = await runMonolith(mono.dir, ['pull'])
+    const conflicted = await runMonosplice(mono.dir, ['pull'])
     expect(conflicted.exitCode).not.toBe(0)
 
-    const doc = await runMonolith(mono.dir, ['doctor'])
+    const doc = await runMonosplice(mono.dir, ['doctor'])
     expect(doc.exitCode).toBe(1)
     expect(doc.stdout).toMatch(/pull/i)
     expect(doc.stdout).toMatch(/--continue/)
@@ -198,9 +198,9 @@ describe('doctor housekeeping', () => {
 
   it('flags a subrepo that was never seeded', async () => {
     const {mono} = await standardFixture()
-    const doc = await runMonolith(mono.dir, ['doctor'])
+    const doc = await runMonosplice(mono.dir, ['doctor'])
     expect(doc.exitCode).toBe(1)
     expect(doc.stdout).toMatch(/not published yet/)
-    expect(doc.stdout).toMatch(/monolith push core --yes/)
+    expect(doc.stdout).toMatch(/monosplice push core --yes/)
   })
 })

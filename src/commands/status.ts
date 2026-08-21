@@ -1,6 +1,6 @@
 import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
-import {MonolithCommand} from '../lib/base.js'
+import {MonospliceCommand} from '../lib/base.js'
 import {buildExportChain, computeExports, planExport} from '../core/exporter.js'
 import {readSequencer} from '../core/importer.js'
 import {tryLoadForkState} from '../core/sync.js'
@@ -37,7 +37,7 @@ interface ForkNote {
   unreachable?: string
 }
 
-export default class Status extends MonolithCommand {
+export default class Status extends MonospliceCommand {
   static description = 'Show how far each subrepo is ahead of and behind its public remote'
 
   static args = {
@@ -140,7 +140,7 @@ export default class Status extends MonolithCommand {
 
   private describe(row: SubrepoStatus, note?: ForkNote): void {
     if (!row.seeded) {
-      this.log(`${row.name}: not published yet (run \`monolith push ${row.name} --yes\`)`)
+      this.log(`${row.name}: not published yet (run \`monosplice push ${row.name} --yes\`)`)
     } else if (row.inSync) {
       this.log(`${row.name}: in sync`)
     } else {
@@ -158,11 +158,11 @@ export default class Status extends MonolithCommand {
     }
     if (row.pullInProgress) {
       this.log(`  ! a pull of ${row.name} is unfinished — resolve the conflict, \`git add\` the files,`)
-      this.log('    then run `monolith pull --continue`')
+      this.log('    then run `monosplice pull --continue`')
     }
     if (row.hookError) {
       this.log(`  ! ${row.hookError}`)
-      this.log(`    \`monolith push ${row.name}\` would fail with this; the count above is an upper bound.`)
+      this.log(`    \`monosplice push ${row.name}\` would fail with this; the count above is an upper bound.`)
     }
   }
 }

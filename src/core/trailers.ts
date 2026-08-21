@@ -1,18 +1,18 @@
 /**
  * Trailer keys that record the cross-repo commit mapping.
  *
- * - Public commits exported from the monorepo carry `Monolith-Source: <mono-sha>`.
- * - Monorepo commits imported from a public repo carry `Monolith-Origin: <pub-sha>`,
+ * - Public commits exported from the monorepo carry `Monosplice-Source: <mono-sha>`.
+ * - Monorepo commits imported from a public repo carry `Monosplice-Origin: <pub-sha>`,
  *   marking that pub commit as reflected in the monorepo.
  *
- * Import skips pub commits carrying Monolith-Source (our own exports). Export
+ * Import skips pub commits carrying Monosplice-Source (our own exports). Export
  * relies on tree equality, not trailers: pure imports are no-ops against the pub
  * tip and get dropped, while conflicted imports (merges of mono + pub edits)
  * export their resolution. Together these prevent ping-pong without ever losing
  * merge resolutions.
  */
-export const SOURCE_TRAILER = 'Monolith-Source'
-export const ORIGIN_TRAILER = 'Monolith-Origin'
+export const SOURCE_TRAILER = 'Monosplice-Source'
+export const ORIGIN_TRAILER = 'Monosplice-Origin'
 
 const TRAILER_LINE = /^[A-Za-z0-9-]+:\s.+$/
 
@@ -28,7 +28,7 @@ function isTrailerBlock(block: string): boolean {
 
 /**
  * Read a trailer value from a commit message. Mirrors git's semantics closely
- * enough for monolith's own trailers: only the final paragraph counts, and only
+ * enough for monosplice's own trailers: only the final paragraph counts, and only
  * when that whole paragraph is a trailer block.
  */
 export function getTrailer(message: string, key: string): string | undefined {

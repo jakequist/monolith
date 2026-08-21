@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest'
 import {deriveVendorName, insertSubrepoEntry, renderSubrepoEntry} from '../../src/core/vendor.js'
 
 describe('deriveVendorName', () => {
-  it('takes the repo basename from every URL form monolith is likely to see', () => {
+  it('takes the repo basename from every URL form monosplice is likely to see', () => {
     expect(deriveVendorName('git@github.com:lodash/lodash.git')).toBe('lodash')
     expect(deriveVendorName('https://github.com/lodash/lodash.git')).toBe('lodash')
     expect(deriveVendorName('https://github.com/lodash/lodash')).toBe('lodash')

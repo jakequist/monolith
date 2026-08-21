@@ -1,6 +1,6 @@
 import path from 'node:path'
 import {describe, expect, it} from 'vitest'
-import {TestRepo, cloneRemote, runMonolith, standardFixture, writeConfig} from './harness.js'
+import {TestRepo, cloneRemote, runMonosplice, standardFixture, writeConfig} from './harness.js'
 
 const EXT_AUTHOR = {authorName: 'Ext Contributor', authorEmail: 'ext@example.test'}
 
@@ -26,10 +26,10 @@ interface StatusJson {
 
 /** Run `status` both ways and check the JSON contract on every call site (S85). */
 async function status(dir: string): Promise<{human: string; json: StatusJson; core: Record<string, unknown>}> {
-  const human = await runMonolith(dir, ['status'])
+  const human = await runMonosplice(dir, ['status'])
   expect(human.exitCode, human.stderr).toBe(0)
 
-  const json = await runMonolith(dir, ['status', '--json'])
+  const json = await runMonosplice(dir, ['status', '--json'])
   expect(json.exitCode, json.stderr).toBe(0)
   const parsed = JSON.parse(json.stdout) as StatusJson
   expect(Array.isArray(parsed.subrepos)).toBe(true)
@@ -46,7 +46,7 @@ async function seededWithExternal(opts: {configExtra?: string} = {}): Promise<{
   pubDir: string
 }> {
   const {root, mono, pubDir} = await standardFixture(opts)
-  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+  const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   const ext = await cloneRemote(root, pubDir, 'ext')
   return {root, mono, pub: new TestRepo(pubDir), ext, pubDir}
@@ -87,7 +87,7 @@ describe('S50 / S85: status across the lifecycle', () => {
     expect(s.core).toMatchObject({ahead: 2, behind: 1, inSync: false})
 
     // 4. After sync → in sync again.
-    const sync = await runMonolith(mono.dir, ['sync'])
+    const sync = await runMonosplice(mono.dir, ['sync'])
     expect(sync.exitCode, sync.stderr).toBe(0)
     s = await status(mono.dir)
     expect(s.human).toMatch(/core: in sync/)
@@ -102,13 +102,13 @@ describe('S50 / S85: status across the lifecycle', () => {
     expect(s.human).toMatch(/core: 1 to pull/)
     expect(s.core).toMatchObject({ahead: 0, behind: 1})
 
-    const pull = await runMonolith(mono.dir, ['pull'])
+    const pull = await runMonosplice(mono.dir, ['pull'])
     expect(pull.exitCode, pull.stderr).toBe(0)
     s = await status(mono.dir)
     expect(s.core).toMatchObject({ahead: 0, behind: 0, inSync: true})
     expect(s.human).toMatch(/core: in sync/)
 
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toMatch(/up to date/)
   })
@@ -117,7 +117,7 @@ describe('S50 / S85: status across the lifecycle', () => {
     const {mono, pubDir} = await standardFixture()
     const s = await status(mono.dir)
     expect(s.human).toMatch(/core: not published yet/)
-    expect(s.human).toMatch(/monolith push core --yes/)
+    expect(s.human).toMatch(/monosplice push core --yes/)
     expect(s.core).toMatchObject({
       name: 'core',
       remote: pubDir,
@@ -133,14 +133,14 @@ describe('S50 / S85: status across the lifecycle', () => {
     const {root, mono} = await seededWithExternal()
     writeConfig(mono, [`    { name: 'core', path: 'core', remote: ${JSON.stringify(path.join(root, 'nope.git'))} }`])
 
-    const res = await runMonolith(mono.dir, ['status'])
+    const res = await runMonosplice(mono.dir, ['status'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/nope\.git/)
   })
 
   it('prints only JSON on stdout so it pipes into jq', async () => {
     const {mono} = await seededWithExternal()
-    const res = await runMonolith(mono.dir, ['status', '--json'])
+    const res = await runMonosplice(mono.dir, ['status', '--json'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout.trim().startsWith('{')).toBe(true)
     expect(res.stdout.trim().endsWith('}')).toBe(true)
@@ -154,7 +154,7 @@ describe('S50 / S85: status across the lifecycle', () => {
     await ext.commit('docs: ext wording', {'README.md': '# core\n\next wording\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
 
-    const conflicted = await runMonolith(mono.dir, ['pull'])
+    const conflicted = await runMonosplice(mono.dir, ['pull'])
     expect(conflicted.exitCode).not.toBe(0)
 
     const s = await status(mono.dir)
@@ -173,12 +173,12 @@ describe('S50 / S85: status across the lifecycle', () => {
     })
     await mono.commit('feat: oops', {'core/config.ts': 'export const token = "SECRET-abc"\n'})
 
-    const human = await runMonolith(mono.dir, ['status'])
+    const human = await runMonosplice(mono.dir, ['status'])
     expect(human.exitCode, human.stderr).toBe(0)
     expect(human.stdout).toMatch(/1 to push/)
     expect(human.stdout).toContain('possible secret in config.ts')
 
-    const json = await runMonolith(mono.dir, ['status', '--json'])
+    const json = await runMonosplice(mono.dir, ['status', '--json'])
     expect(json.exitCode, json.stderr).toBe(0)
     const parsed = JSON.parse(json.stdout) as StatusJson
     const core = parsed.subrepos[0]!
@@ -188,17 +188,17 @@ describe('S50 / S85: status across the lifecycle', () => {
     expect(Object.keys(core).sort()).toEqual([...SUBREPO_KEYS, 'hookError'].sort())
 
     // and push really would fail, which is what the warning promised
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode).not.toBe(0)
   })
 
   it('accepts a subrepo name argument', async () => {
     const {mono} = await seededWithExternal()
-    const res = await runMonolith(mono.dir, ['status', 'core'])
+    const res = await runMonosplice(mono.dir, ['status', 'core'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/core: in sync/)
 
-    const unknown = await runMonolith(mono.dir, ['status', 'nope'])
+    const unknown = await runMonosplice(mono.dir, ['status', 'nope'])
     expect(unknown.exitCode).not.toBe(0)
   })
 })

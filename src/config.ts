@@ -47,12 +47,12 @@ export interface SubrepoConfig {
   scan?: (files: FileMap, ctx: ExportContext) => void | Promise<void>
 }
 
-export interface MonolithConfig {
+export interface MonospliceConfig {
   subrepos: SubrepoConfig[]
 }
 
-/** Identity helper that provides types in monolith.config.ts. */
-export function defineConfig(config: MonolithConfig): MonolithConfig {
+/** Identity helper that provides types in monosplice.config.ts. */
+export function defineConfig(config: MonospliceConfig): MonospliceConfig {
   return config
 }
 
@@ -71,15 +71,15 @@ export interface ResolvedSubrepo {
 }
 
 export interface Project {
-  /** Directory containing monolith.config.* (treated as the monorepo root). */
+  /** Directory containing monosplice.config.* (treated as the monorepo root). */
   root: string
   configPath: string
   subrepos: ResolvedSubrepo[]
 }
 
-export const CONFIG_FILENAMES = ['monolith.config.ts', 'monolith.config.mts', 'monolith.config.js', 'monolith.config.mjs']
+export const CONFIG_FILENAMES = ['monosplice.config.ts', 'monosplice.config.mts', 'monosplice.config.js', 'monosplice.config.mjs']
 
-/** Walk up from startDir looking for a monolith config file. */
+/** Walk up from startDir looking for a monosplice config file. */
 export function findConfig(startDir: string): string | null {
   let dir = path.resolve(startDir)
   for (;;) {
@@ -136,7 +136,7 @@ export function resolveConfig(raw: unknown, configPath: string): ResolvedSubrepo
     if (s.pushBranch !== undefined && s.upstream === undefined) {
       throw new ConfigError(
         configPath,
-        `  subrepos.${idx}.pushBranch — pushBranch requires upstream: it names the branch monolith pushes on your fork, and without \`upstream\` there is no fork/upstream split. Drop pushBranch, or set \`upstream\` to the repository you pull from.`,
+        `  subrepos.${idx}.pushBranch — pushBranch requires upstream: it names the branch monosplice pushes on your fork, and without \`upstream\` there is no fork/upstream split. Drop pushBranch, or set \`upstream\` to the repository you pull from.`,
       )
     }
     if (s.upstream !== undefined && s.upstream === s.remote) {

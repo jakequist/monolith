@@ -4,7 +4,7 @@ import {
   makeBareRemote,
   makeRepo,
   multiFixture,
-  runMonolith,
+  runMonosplice,
   sandbox,
   standardFixture,
   writeConfig,
@@ -27,7 +27,7 @@ describe('S02: first `push --yes` (baseline)', () => {
     await mono.commit('chore: private churn', {'private/notes.md': 'nope\n'})
     const monoHead = await mono.head()
 
-    const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/published/i)
 
@@ -39,7 +39,7 @@ describe('S02: first `push --yes` (baseline)', () => {
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha(monoHead, 'core'))
 
     const messages = await pub.messages()
-    expect(messages[0]).toContain(`Monolith-Source: ${monoHead}`)
+    expect(messages[0]).toContain(`Monosplice-Source: ${monoHead}`)
 
     // the private tree never crosses the boundary
     const entries = await pub.treeEntries('HEAD')
@@ -48,7 +48,7 @@ describe('S02: first `push --yes` (baseline)', () => {
 
   it('also works without naming the subrepo', async () => {
     const {mono, pubDir} = await standardFixture()
-    const res = await runMonolith(mono.dir, ['push', '--yes'])
+    const res = await runMonosplice(mono.dir, ['push', '--yes'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect((await new TestRepo(pubDir).subjects())).toHaveLength(1)
   })
@@ -64,7 +64,7 @@ describe('S03: first `push --yes --full-history`', () => {
     await mono.commit('chore: private only', {'private/notes.md': 'nope\n'})
     await mono.commit('fix: tweak readme', {'core/README.md': '# core\n\nmore\n'})
 
-    const res = await runMonolith(mono.dir, ['push', 'core', '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--full-history'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const monoCoreShas = (await mono.git(['rev-list', '--reverse', '--topo-order', 'HEAD', '--', 'core'])).split('\n')
@@ -75,7 +75,7 @@ describe('S03: first `push --yes --full-history`', () => {
 
     const pubMessages = await pub.messages()
     for (const [i, sha] of monoCoreShas.entries()) {
-      expect(pubMessages[i]).toContain(`Monolith-Source: ${sha}`)
+      expect(pubMessages[i]).toContain(`Monosplice-Source: ${sha}`)
     }
 
     const monoAuthors = await Promise.all(monoCoreShas.map((s) => mono.git(['show', '-s', '--format=%an <%ae>', s])))
@@ -86,12 +86,12 @@ describe('S03: first `push --yes --full-history`', () => {
 
   it('refuses once the subrepo is already published', async () => {
     const {mono, pubDir} = await standardFixture()
-    expect((await runMonolith(mono.dir, ['push', 'core', '--yes'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['push', 'core', '--yes'])).exitCode).toBe(0)
     const pub = new TestRepo(pubDir)
     const before = await pub.head()
 
     await mono.commit('feat: later', {'core/later.txt': 'l\n'})
-    const res = await runMonolith(mono.dir, ['push', 'core', '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--full-history'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/--full-history/)
     expect(res.stderr).toMatch(/already/i)
@@ -108,7 +108,7 @@ describe('S04: first push honors exclude patterns', () => {
       'core/src/public.ts': 'export const p = 1\n',
     })
 
-    const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const pub = new TestRepo(pubDir)
@@ -123,7 +123,7 @@ describe('S04: first push honors exclude patterns', () => {
     await mono.commit('feat: internal notes', {'core/INTERNAL.md': 'do not publish\n'})
     await mono.commit('feat: public thing', {'core/src/public.ts': 'export const p = 1\n'})
 
-    const res = await runMonolith(mono.dir, ['push', 'core', '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--full-history'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const pub = new TestRepo(pubDir)
@@ -135,7 +135,7 @@ describe('S04: first push honors exclude patterns', () => {
 })
 
 describe('S05: push against a pub with unrelated history', () => {
-  it('refuses, points at `monolith adopt`, and leaves the remote untouched', async () => {
+  it('refuses, points at `monosplice adopt`, and leaves the remote untouched', async () => {
     const {root, mono, pubDir} = await standardFixture()
 
     const ext = await makeRepo(root, 'ext')
@@ -147,9 +147,9 @@ describe('S05: push against a pub with unrelated history', () => {
     const before = await pub.head()
 
     for (const args of [['push'], ['push', 'core', '--yes']]) {
-      const res = await runMonolith(mono.dir, args)
+      const res = await runMonosplice(mono.dir, args)
       expect(res.exitCode, `${args.join(' ')} should have failed`).not.toBe(0)
-      expect(res.stderr).toMatch(/monolith adopt core/)
+      expect(res.stderr).toMatch(/monosplice adopt core/)
       expect(await pub.head()).toBe(before)
       expect(await pub.subjects()).toEqual(['external: hello'])
     }
@@ -160,7 +160,7 @@ describe('S06: first push when the subrepo path has no committed files', () => {
   it('errors clearly and pushes nothing', async () => {
     const {mono, pubDir} = await deadEndFixture()
 
-    const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/core/)
     expect(res.stderr).toMatch(/no committed files|nothing to publish|nothing exists yet/i)
@@ -175,15 +175,15 @@ describe('S90: non-interactive first push without --yes', () => {
     const {mono, corePubDir, corePub, libPub} = await multiFixture()
 
     // core is already published; lib is not.
-    expect((await runMonolith(mono.dir, ['push', 'core', '--yes'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['push', 'core', '--yes'])).exitCode).toBe(0)
     await mono.commit('feat: both', {
       'core/new.txt': 'c\n',
       'packages/lib/new.txt': 'l\n',
     })
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/monolith push lib --yes/)
+    expect(res.stderr).toMatch(/monosplice push lib --yes/)
     expect(res.stderr).toMatch(/first/i)
 
     // the refusal did not abort the run: core still exported
@@ -197,9 +197,9 @@ describe('S90: non-interactive first push without --yes', () => {
 
   it('refuses a single unpublished subrepo too', async () => {
     const {mono, pubDir} = await standardFixture()
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/monolith push core --yes/)
+    expect(res.stderr).toMatch(/monosplice push core --yes/)
     const pub = new TestRepo(pubDir)
     expect(await pub.git(['rev-parse', '--verify', '--quiet', 'refs/heads/main']).catch(() => '')).toBe('')
   })
@@ -210,26 +210,26 @@ describe('S91: `push --yes` baseline then normal exports', () => {
     const {mono, pubDir} = await standardFixture()
     const pub = new TestRepo(pubDir)
 
-    const first = await runMonolith(mono.dir, ['push', '--yes'])
+    const first = await runMonosplice(mono.dir, ['push', '--yes'])
     expect(first.exitCode, first.stderr).toBe(0)
     expect(first.stdout).toMatch(/published/i)
     expect(first.stdout).not.toMatch(/exported/i)
     expect(await pub.subjects()).toEqual(['Initial import of core'])
 
-    const again = await runMonolith(mono.dir, ['push'])
+    const again = await runMonosplice(mono.dir, ['push'])
     expect(again.exitCode, again.stderr).toBe(0)
     expect(again.stdout).toMatch(/up to date/)
     expect(await pub.subjects()).toEqual(['Initial import of core'])
 
     await mono.commit('feat: one', {'core/one.txt': '1\n'})
     await mono.commit('feat: two', {'core/two.txt': '2\n'})
-    const later = await runMonolith(mono.dir, ['push'])
+    const later = await runMonosplice(mono.dir, ['push'])
     expect(later.exitCode, later.stderr).toBe(0)
     expect(later.stdout).toMatch(/exported 2 commit/)
     expect(await pub.subjects()).toEqual(['Initial import of core', 'feat: one', 'feat: two'])
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
 
-    const status = await runMonolith(mono.dir, ['status'])
+    const status = await runMonosplice(mono.dir, ['status'])
     expect(status.stdout).toMatch(/core: in sync/)
   })
 })
@@ -250,7 +250,7 @@ describe('S92: `push --yes --full-history` runs scan hooks per replayed commit',
     const leak = await mono.commit('feat: oops', {'core/config.ts': 'export const token = "SECRET-abc"\n'})
     await mono.commit('fix: remove the secret', {'core/config.ts': null})
 
-    const res = await runMonolith(mono.dir, ['push', 'core', '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--full-history'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('possible secret in config.ts')
     expect(res.stderr).toContain(leak)
@@ -259,7 +259,7 @@ describe('S92: `push --yes --full-history` runs scan hooks per replayed commit',
     expect(await pub.git(['rev-parse', '--verify', '--quiet', 'refs/heads/main']).catch(() => '')).toBe('')
 
     // the baseline (current tree, secret already gone) still publishes fine
-    const baseline = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+    const baseline = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
     expect(baseline.exitCode, baseline.stderr).toBe(0)
     expect(await pub.subjects()).toEqual(['Initial import of core'])
   })
@@ -270,7 +270,7 @@ describe('S99: empty subrepo dir and empty remote', () => {
     const {mono} = await deadEndFixture()
 
     for (const args of [['push', 'core', '--yes'], ['push'], ['pull'], ['sync'], ['adopt', 'core']]) {
-      const res = await runMonolith(mono.dir, args)
+      const res = await runMonosplice(mono.dir, args)
       expect(res.exitCode, `${args.join(' ')} should have failed`).not.toBe(0)
       expect(res.stderr, args.join(' ')).toMatch(/nothing exists yet/i)
       expect(res.stderr, args.join(' ')).toMatch(/core/)

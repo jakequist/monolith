@@ -1,6 +1,6 @@
 export {defineConfig} from './config.js'
 export type {
-  MonolithConfig,
+  MonospliceConfig,
   SubrepoConfig,
   ExportContext,
   FileMap,

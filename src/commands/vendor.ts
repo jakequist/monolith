@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {Args, Flags} from '@oclif/core'
 import {loadProject, type Project, type ResolvedSubrepo} from '../config.js'
-import {MonolithCommand} from '../lib/base.js'
+import {MonospliceCommand} from '../lib/base.js'
 import {applyTreeInto, commitStaged, vendorMessage} from '../core/adopt.js'
 import {hasCommittedFiles} from '../core/filter.js'
 import {EMPTY_TREE, GitError, fetchBranch, git, lsRemoteBranch, revParse} from '../core/git.js'
@@ -17,7 +17,7 @@ import {
 } from '../core/vendor.js'
 import {pullInProgressMessage} from '../lib/ops.js'
 
-export default class Vendor extends MonolithCommand {
+export default class Vendor extends MonospliceCommand {
   static description = 'Add a third-party repository as a tracked subrepo, in one commit'
 
   static args = {
@@ -52,7 +52,7 @@ export default class Vendor extends MonolithCommand {
     // Everything below writes something. Nothing above did.
     const state = await readSequencer(root)
     if (state) this.error(await pullInProgressMessage(root, state))
-    const problem = await checkVendorPreconditions(root, `monolith vendor ${url}`)
+    const problem = await checkVendorPreconditions(root, `monosplice vendor ${url}`)
     if (problem) this.error(problem)
     await this.requireFreePath(root, entry)
 
@@ -71,16 +71,16 @@ export default class Vendor extends MonolithCommand {
 
     this.log(`✓ vendored ${entry.name} at ${entry.path} (tracking ${source}#${entry.branch})`)
     this.log(
-      `  \`monolith pull ${entry.name}\` brings in upstream updates; your own commits under ${entry.path}/ are three-way merged with them.`,
+      `  \`monosplice pull ${entry.name}\` brings in upstream updates; your own commits under ${entry.path}/ are three-way merged with them.`,
     )
     if (entry.upstream !== undefined) {
       this.log(
-        `  \`monolith push ${entry.name}\` rebuilds ${entry.remote} (${entry.pushBranch}) as ${source}'s ${entry.branch} plus your patches — open the PR from there.`,
+        `  \`monosplice push ${entry.name}\` rebuilds ${entry.remote} (${entry.pushBranch}) as ${source}'s ${entry.branch} plus your patches — open the PR from there.`,
       )
     }
   }
 
-  /** Turn the URL and flags into the subrepo entry the rest of monolith already understands. */
+  /** Turn the URL and flags into the subrepo entry the rest of monosplice already understands. */
   private plan(
     url: string,
     flags: {path?: string; name?: string; branch: string; fork?: string},
@@ -93,7 +93,7 @@ export default class Vendor extends MonolithCommand {
     const name = flags.name ?? deriveVendorName(url)
     if (!name) {
       this.error(
-        `Cannot derive a subrepo name from ${JSON.stringify(url)}.\nNothing was changed. Re-run with an explicit name:\n  monolith vendor ${url} --name <name>`,
+        `Cannot derive a subrepo name from ${JSON.stringify(url)}.\nNothing was changed. Re-run with an explicit name:\n  monosplice vendor ${url} --name <name>`,
       )
     }
     let subPath: string
@@ -119,7 +119,7 @@ export default class Vendor extends MonolithCommand {
     for (const s of project.subrepos) {
       if (s.name === entry.name) {
         this.error(
-          `A subrepo named ${entry.name} is already configured (${s.path}/ tracking ${s.remote}).\nNothing was changed. Vendor it under another name with \`--name <name>\`, or run \`monolith pull ${s.name}\` if this is the one you meant.`,
+          `A subrepo named ${entry.name} is already configured (${s.path}/ tracking ${s.remote}).\nNothing was changed. Vendor it under another name with \`--name <name>\`, or run \`monosplice pull ${s.name}\` if this is the one you meant.`,
         )
       }
       if (s.path === entry.path) {
@@ -145,7 +145,7 @@ export default class Vendor extends MonolithCommand {
     const head = (await revParse(root, 'HEAD')) ?? 'HEAD'
     if (await hasCommittedFiles(root, head, entry)) {
       this.error(
-        `${entry.path}/ already has committed files in this monorepo, so there is nothing to vendor into it.\nNothing was changed. Add the subrepo to your config by hand and run \`monolith adopt ${entry.name}\`, or vendor into a different directory with \`--path <dir>\`.`,
+        `${entry.path}/ already has committed files in this monorepo, so there is nothing to vendor into it.\nNothing was changed. Add the subrepo to your config by hand and run \`monosplice adopt ${entry.name}\`, or vendor into a different directory with \`--path <dir>\`.`,
       )
     }
   }
@@ -188,7 +188,7 @@ export default class Vendor extends MonolithCommand {
     }
   }
 
-  /** Why the config monolith just wrote cannot be trusted, or null when it checks out. */
+  /** Why the config monosplice just wrote cannot be trusted, or null when it checks out. */
   private async reloadedMismatch(root: string, entry: ResolvedSubrepo): Promise<string | null> {
     let reloaded: Project | null
     try {
@@ -196,7 +196,7 @@ export default class Vendor extends MonolithCommand {
     } catch (err) {
       return `the rewritten config does not load:\n${(err as Error).message}`
     }
-    if (!reloaded) return 'the config file vanished while monolith was writing it'
+    if (!reloaded) return 'the config file vanished while monosplice was writing it'
     const found = reloaded.subrepos.find((s) => s.name === entry.name)
     if (!found) return `the rewritten config has no subrepo named ${entry.name}`
     if (
@@ -206,7 +206,7 @@ export default class Vendor extends MonolithCommand {
       found.upstream !== entry.upstream ||
       found.pushBranch !== entry.pushBranch
     ) {
-      return `the rewritten config resolves ${entry.name} to ${found.path}/ tracking ${pullSource(found)} (${found.branch}), not what monolith wrote`
+      return `the rewritten config resolves ${entry.name} to ${found.path}/ tracking ${pullSource(found)} (${found.branch}), not what monosplice wrote`
     }
     return null
   }
@@ -223,7 +223,7 @@ export default class Vendor extends MonolithCommand {
     this.log(`  ${snippet},`)
     this.log('')
     this.error(
-      `monolith cannot safely edit ${configPath}: ${reason}.\nNothing was changed — the config is untouched and no commit was made. Paste the entry printed above into your config, then run:\n  monolith adopt ${entry.name}`,
+      `monosplice cannot safely edit ${configPath}: ${reason}.\nNothing was changed — the config is untouched and no commit was made. Paste the entry printed above into your config, then run:\n  monosplice adopt ${entry.name}`,
     )
   }
 }

@@ -1,6 +1,6 @@
 import {Args} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
-import {MonolithCommand} from '../lib/base.js'
+import {MonospliceCommand} from '../lib/base.js'
 import {computeExports, exportBaseRewritten, planExport} from '../core/exporter.js'
 import {filteredSubtree} from '../core/filter.js'
 import {git, revList} from '../core/git.js'
@@ -8,7 +8,7 @@ import {readSequencer, sequencerPath} from '../core/importer.js'
 import {loadSyncView, pullSource, tryLoadForkState, type SyncView} from '../core/sync.js'
 import {ORIGIN_TRAILER, SOURCE_TRAILER} from '../core/trailers.js'
 
-export default class Doctor extends MonolithCommand {
+export default class Doctor extends MonospliceCommand {
   static description = 'Report the derived sync points for every subrepo and verify they match reality'
 
   static args = {
@@ -28,7 +28,7 @@ export default class Doctor extends MonolithCommand {
     if (state) {
       this.problems += 1
       this.log(`✗ an unfinished pull of ${state.subrepo} is recorded in ${await sequencerPath(root)}`)
-      this.log('  Resolve the conflict, `git add` the files, then run `monolith pull --continue`.')
+      this.log('  Resolve the conflict, `git add` the files, then run `monosplice pull --continue`.')
       this.log('  To abort that import instead, delete the file.')
       this.log('')
     }
@@ -46,7 +46,7 @@ export default class Doctor extends MonolithCommand {
       this.log('')
     }
 
-    // Only meaningful with every subrepo in view: a Monolith-Origin trailer in monorepo
+    // Only meaningful with every subrepo in view: a Monosplice-Origin trailer in monorepo
     // history may belong to any of the configured public repos.
     if (!args.subrepo) this.checkOrigins(importedPubShas, fetchedPubShas)
 
@@ -86,7 +86,7 @@ export default class Doctor extends MonolithCommand {
       this.problem(
         `cannot reach ${triangular ? 'upstream ' : ''}${pullSource(subrepo)}`,
         ...(err as Error).message.split('\n'),
-        'Fix the URL in your config or your network/credentials, then run `monolith doctor` again.',
+        'Fix the URL in your config or your network/credentials, then run `monosplice doctor` again.',
       )
       return null
     }
@@ -95,8 +95,8 @@ export default class Doctor extends MonolithCommand {
       this.problem(
         `not published yet — ${pullSource(subrepo)} has no ${subrepo.branch} branch.`,
         triangular
-          ? `Fix \`upstream\` or \`branch\` in your config: monolith builds the fork branch on the upstream head.`
-          : `Run \`monolith push ${subrepo.name} --yes\` to publish it for the first time.`,
+          ? `Fix \`upstream\` or \`branch\` in your config: monosplice builds the fork branch on the upstream head.`
+          : `Run \`monosplice push ${subrepo.name} --yes\` to publish it for the first time.`,
       )
       return null
     }
@@ -118,7 +118,7 @@ export default class Doctor extends MonolithCommand {
         `public commit ${broken.pubSha} carries ${SOURCE_TRAILER}: ${broken.monoSha}, but that monorepo commit does not exist in this clone.`,
         'Usually the monorepo clone is missing history (a shallow or partial clone), or `remote` points',
         'at a repository that was published from a different monorepo.',
-        'Run `git fetch --unshallow` (or fix `remote` in your config); monolith refuses to export until',
+        'Run `git fetch --unshallow` (or fix `remote` in your config); monosplice refuses to export until',
         'the mapping resolves, so nothing can be published on top of a history it cannot see.',
       )
     }
@@ -127,7 +127,7 @@ export default class Doctor extends MonolithCommand {
       this.problem(
         `the last exported monorepo commit ${view.lastExportedMono} is no longer an ancestor of HEAD.`,
         'Monorepo history was rewritten (rebase, amend or force-push) underneath it, so the export range',
-        'is meaningless and `monolith push` will refuse.',
+        'is meaningless and `monosplice push` will refuse.',
         'Restore that commit (see `git reflog`) or re-point the branch at history that contains it.',
       )
     }
@@ -146,8 +146,8 @@ export default class Doctor extends MonolithCommand {
       this.problem(
         `cannot reach fork remote ${subrepo.remote}`,
         ...error.message.split('\n'),
-        `Pulling still works — it only talks to ${subrepo.upstream} — but \`monolith push ${subrepo.name}\` will fail.`,
-        'Fix `remote` in your config or your network/credentials, then run `monolith doctor` again.',
+        `Pulling still works — it only talks to ${subrepo.upstream} — but \`monosplice push ${subrepo.name}\` will fail.`,
+        'Fix `remote` in your config or your network/credentials, then run `monosplice doctor` again.',
       )
       return
     }
@@ -171,7 +171,7 @@ export default class Doctor extends MonolithCommand {
     if (hookError) {
       this.problem(
         `a configured hook rejects a pending commit: ${hookError}`,
-        `\`monolith push ${subrepo.name}\` will fail until that commit is fixed or the hook is changed.`,
+        `\`monosplice push ${subrepo.name}\` will fail until that commit is fixed or the hook is changed.`,
       )
     }
   }
@@ -189,9 +189,9 @@ export default class Doctor extends MonolithCommand {
     if (expected === null || actual === null || expected === actual) return
 
     this.note(
-      `pub commit ${pubSha} does not match the subtree monolith would export from ${view.lastExportedMono} today.`,
+      `pub commit ${pubSha} does not match the subtree monosplice would export from ${view.lastExportedMono} today.`,
       'That is expected if `exclude`, `transform` or `rewriteMessage` changed since that export — the next',
-      `\`monolith push ${subrepo.name}\` republishes with the current config. If nothing changed, the public`,
+      `\`monosplice push ${subrepo.name}\` republishes with the current config. If nothing changed, the public`,
       'branch was probably rewritten.',
     )
   }

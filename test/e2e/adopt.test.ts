@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest'
-import {TestRepo, makeBareRemote, makeRepo, runMonolith, sandbox, writeConfig} from './harness.js'
+import {TestRepo, makeBareRemote, makeRepo, runMonosplice, sandbox, writeConfig} from './harness.js'
 
 const UP_AUTHOR = {authorName: 'Up Stream', authorEmail: 'up@example.test'}
 
@@ -15,7 +15,7 @@ interface Fixture {
 
 /**
  * A monorepo that has never met an existing public repo: the remote already has its own
- * history and carries no monolith trailers. `monoCore` seeds `core/` in the monorepo
+ * history and carries no monosplice trailers. `monoCore` seeds `core/` in the monorepo
  * (omit it for the "directory does not exist yet" half of the matrix).
  */
 async function upstreamFixture(
@@ -56,7 +56,7 @@ describe('S93: adopt with pub history and no mono directory (shallow default)', 
     const {mono, pub, pubDir, pubHead} = await upstreamFixture({commits: 20})
     const monoBefore = (await mono.subjects()).length
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/adopt/i)
 
@@ -65,7 +65,7 @@ describe('S93: adopt with pub history and no mono directory (shallow default)', 
     expect(subjects[subjects.length - 1]).toBe(`Adopt core from ${pubDir} @ ${pubHead.slice(0, 10)}`)
 
     const messages = await mono.messages()
-    expect(messages[messages.length - 1]).toContain(`Monolith-Origin: ${pubHead}`)
+    expect(messages[messages.length - 1]).toContain(`Monosplice-Origin: ${pubHead}`)
 
     expect(await mono.treeSha('HEAD', 'core')).toBe(await pub.treeSha('HEAD'))
     expect(mono.read('core/README.md')).toBe('# upstream core\n')
@@ -74,16 +74,16 @@ describe('S93: adopt with pub history and no mono directory (shallow default)', 
     expect(mono.exists('private/secrets.md')).toBe(true)
 
     // The whole point of ancestry-based reflection: 20 pub commits, none "to pull".
-    const status = await runMonolith(mono.dir, ['status'])
+    const status = await runMonosplice(mono.dir, ['status'])
     expect(status.exitCode, status.stderr).toBe(0)
     expect(status.stdout).toMatch(/core: in sync/)
     expect(status.stdout).not.toMatch(/to pull/)
 
-    const pull = await runMonolith(mono.dir, ['pull'])
+    const pull = await runMonosplice(mono.dir, ['pull'])
     expect(pull.exitCode, pull.stderr).toBe(0)
     expect(pull.stdout).toMatch(/up to date/)
 
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toMatch(/up to date/)
     expect(await pub.head()).toBe(pubHead)
@@ -95,7 +95,7 @@ describe('S94: adopt --history', () => {
     const {mono, pub, pubHead, pubSubjects} = await upstreamFixture({commits: 5})
     const monoBefore = await mono.subjects()
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core', '--history'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core', '--history'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const subjects = await mono.subjects()
@@ -105,13 +105,13 @@ describe('S94: adopt --history', () => {
     expect(authors.slice(-5)).toEqual(Array.from({length: 5}, () => 'Up Stream <up@example.test>'))
 
     const messages = await mono.messages()
-    expect(messages[messages.length - 1]).toContain(`Monolith-Origin: ${pubHead}`)
+    expect(messages[messages.length - 1]).toContain(`Monosplice-Origin: ${pubHead}`)
 
     expect(await mono.treeSha('HEAD', 'core')).toBe(await pub.treeSha('HEAD'))
 
-    const status = await runMonolith(mono.dir, ['status'])
+    const status = await runMonosplice(mono.dir, ['status'])
     expect(status.stdout).toMatch(/core: in sync/)
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toMatch(/up to date/)
     expect(await pub.head()).toBe(pubHead)
@@ -129,24 +129,24 @@ describe('S95: adopt when both sides have content and the trees match', () => {
     expect(await mono.treeSha('HEAD', 'core')).toBe(await pub.treeSha('HEAD'))
     const monoBefore = (await mono.subjects()).length
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const subjects = await mono.subjects()
     expect(subjects).toHaveLength(monoBefore + 1)
     expect(subjects[subjects.length - 1]).toContain('Adopt core')
     const messages = await mono.messages()
-    expect(messages[messages.length - 1]).toContain(`Monolith-Origin: ${pubHead}`)
+    expect(messages[messages.length - 1]).toContain(`Monosplice-Origin: ${pubHead}`)
     // the adopt commit changed nothing in the monorepo
     expect(await mono.git(['diff', '--name-only', 'HEAD~1', 'HEAD'])).toBe('')
 
-    expect((await runMonolith(mono.dir, ['status'])).stdout).toMatch(/core: in sync/)
-    expect((await runMonolith(mono.dir, ['pull'])).stdout).toMatch(/up to date/)
-    expect((await runMonolith(mono.dir, ['push'])).stdout).toMatch(/up to date/)
+    expect((await runMonosplice(mono.dir, ['status'])).stdout).toMatch(/core: in sync/)
+    expect((await runMonosplice(mono.dir, ['pull'])).stdout).toMatch(/up to date/)
+    expect((await runMonosplice(mono.dir, ['push'])).stdout).toMatch(/up to date/)
 
     // A new mono commit exports parented on the EXISTING pub head.
     await mono.commit('feat: after adoption', {'core/new.txt': 'n\n'})
-    const push = await runMonolith(mono.dir, ['push'])
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toMatch(/exported 1 commit/)
     expect(await pub.git(['rev-parse', 'HEAD~1'])).toBe(pubHead)
@@ -162,7 +162,7 @@ describe('S96: adopt when both sides have content and the trees differ', () => {
     })
     const headBefore = await mono.head()
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('README.md')
     expect(res.stderr).toContain('only-mono.txt')
@@ -182,14 +182,14 @@ describe('S96: adopt when both sides have content and the trees differ', () => {
     })
     const monoBefore = (await mono.subjects()).length
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core', '--theirs'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core', '--theirs'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const subjects = await mono.subjects()
     expect(subjects).toHaveLength(monoBefore + 1)
     expect(subjects[subjects.length - 1]).toContain('Adopt core')
     const messages = await mono.messages()
-    expect(messages[messages.length - 1]).toContain(`Monolith-Origin: ${pubHead}`)
+    expect(messages[messages.length - 1]).toContain(`Monosplice-Origin: ${pubHead}`)
 
     expect(await mono.treeSha('HEAD', 'core')).toBe(await pub.treeSha('HEAD'))
     expect(mono.read('core/README.md')).toBe('# pub side\n')
@@ -198,8 +198,8 @@ describe('S96: adopt when both sides have content and the trees differ', () => {
     // the pre-adopt content is still in monorepo history
     expect(await mono.fileAt('HEAD~1', 'core/only-mono.txt')).toBe('m')
 
-    expect((await runMonolith(mono.dir, ['status'])).stdout).toMatch(/core: in sync/)
-    const push = await runMonolith(mono.dir, ['push'])
+    expect((await runMonosplice(mono.dir, ['status'])).stdout).toMatch(/core: in sync/)
+    const push = await runMonosplice(mono.dir, ['push'])
     expect(push.exitCode, push.stderr).toBe(0)
     expect(push.stdout).toMatch(/up to date/)
     expect(await pub.head()).toBe(pubHead)
@@ -211,9 +211,9 @@ describe('S97: pull against an unrelated pub', () => {
     const {mono, pubHead} = await upstreamFixture({monoCore: {'core/README.md': '# mono side\n'}})
     const headBefore = await mono.head()
 
-    const res = await runMonolith(mono.dir, ['pull'])
+    const res = await runMonosplice(mono.dir, ['pull'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/monolith adopt core/)
+    expect(res.stderr).toMatch(/monosplice adopt core/)
     expect(await mono.head()).toBe(headBefore)
     expect(await mono.git(['status', '--porcelain'])).toBe('')
     expect(mono.read('core/README.md')).toBe('# mono side\n')
@@ -224,9 +224,9 @@ describe('S97: pull against an unrelated pub', () => {
     const {mono} = await upstreamFixture()
     const headBefore = await mono.head()
 
-    const res = await runMonolith(mono.dir, ['pull'])
+    const res = await runMonosplice(mono.dir, ['pull'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/monolith adopt core/)
+    expect(res.stderr).toMatch(/monosplice adopt core/)
     expect(await mono.head()).toBe(headBefore)
     expect(mono.exists('core')).toBe(false)
   })
@@ -235,7 +235,7 @@ describe('S97: pull against an unrelated pub', () => {
 describe('S98: push after adopt never re-exports pre-adoption mono history', () => {
   /**
    * Each shape leaves real pre-adoption commits *touching the subrepo path* behind, so a
-   * push that anchored only on pub `Monolith-Source` trailers would replay them onto the
+   * push that anchored only on pub `Monosplice-Source` trailers would replay them onto the
    * adopted repo. Nothing but genuinely new work may appear in the pub log.
    */
   const shapes = [
@@ -282,17 +282,17 @@ describe('S98: push after adopt never re-exports pre-adoption mono history', () 
       const {mono, pub, pubSubjects, pubHead} = await upstreamFixture(shape.fixture)
       await shape.legacy(mono)
 
-      const adopt = await runMonolith(mono.dir, shape.args)
+      const adopt = await runMonosplice(mono.dir, shape.args)
       expect(adopt.exitCode, adopt.stderr).toBe(0)
 
-      const firstPush = await runMonolith(mono.dir, ['push'])
+      const firstPush = await runMonosplice(mono.dir, ['push'])
       expect(firstPush.exitCode, firstPush.stderr).toBe(0)
       expect(firstPush.stdout).toMatch(/up to date/)
       expect(await pub.subjects()).toEqual(pubSubjects)
       expect(await pub.head()).toBe(pubHead)
 
       await mono.commit('feat: genuinely new', {'core/new.txt': 'n\n'})
-      const second = await runMonolith(mono.dir, ['push'])
+      const second = await runMonosplice(mono.dir, ['push'])
       expect(second.exitCode, second.stderr).toBe(0)
       expect(second.stdout).toMatch(/exported 1 commit/)
 
@@ -308,14 +308,14 @@ describe('S99a: adopt preconditions', () => {
     mono.write('core/README.md', '# work in progress\n')
     const headBefore = await mono.head()
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/core/)
     expect(res.stderr).toMatch(/uncommitted/i)
     expect(await mono.head()).toBe(headBefore)
     expect(mono.read('core/README.md')).toBe('# work in progress\n')
     // nothing was fetched either
-    expect(await mono.git(['rev-parse', '--verify', '--quiet', 'refs/monolith/core/remote']).catch(() => '')).toBe('')
+    expect(await mono.git(['rev-parse', '--verify', '--quiet', 'refs/monosplice/core/remote']).catch(() => '')).toBe('')
   })
 
   it('refuses staged changes anywhere before fetching or writing', async () => {
@@ -324,26 +324,26 @@ describe('S99a: adopt preconditions', () => {
     await mono.git(['add', 'private/secrets.md'])
     const headBefore = await mono.head()
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/staged/i)
     expect(await mono.head()).toBe(headBefore)
     expect(await mono.git(['diff', '--cached', '--name-only'])).toBe('private/secrets.md')
-    expect(await mono.git(['rev-parse', '--verify', '--quiet', 'refs/monolith/core/remote']).catch(() => '')).toBe('')
+    expect(await mono.git(['rev-parse', '--verify', '--quiet', 'refs/monosplice/core/remote']).catch(() => '')).toBe('')
   })
 })
 
 describe('S99b: adopt an already-related subrepo', () => {
   it('refuses when the two repos are already connected by trailers', async () => {
     const {mono, pub} = await upstreamFixture()
-    expect((await runMonolith(mono.dir, ['adopt', 'core'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['adopt', 'core'])).exitCode).toBe(0)
     const headBefore = await mono.head()
     const pubHeadBefore = await pub.head()
 
-    const again = await runMonolith(mono.dir, ['adopt', 'core'])
+    const again = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(again.exitCode).not.toBe(0)
     expect(again.stderr).toMatch(/already/i)
-    expect(again.stderr).toMatch(/monolith (pull|push|sync)/)
+    expect(again.stderr).toMatch(/monosplice (pull|push|sync)/)
     expect(await mono.head()).toBe(headBefore)
     expect(await pub.head()).toBe(pubHeadBefore)
   })
@@ -354,9 +354,9 @@ describe('S99b: adopt an already-related subrepo', () => {
     const pubDir = await makeBareRemote(root, 'core-pub')
     writeConfig(mono, [`    { name: 'core', path: 'core', remote: ${JSON.stringify(pubDir)} }`])
     await mono.commit('chore: initial', {'core/README.md': '# core\n'})
-    expect((await runMonolith(mono.dir, ['push', 'core', '--yes'])).exitCode).toBe(0)
+    expect((await runMonosplice(mono.dir, ['push', 'core', '--yes'])).exitCode).toBe(0)
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/already/i)
   })
@@ -370,9 +370,9 @@ describe('adopt against a remote that has nothing to adopt', () => {
     writeConfig(mono, [`    { name: 'core', path: 'core', remote: ${JSON.stringify(pubDir)} }`])
     await mono.commit('chore: initial', {'core/README.md': '# core\n'})
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/monolith push core --yes/)
+    expect(res.stderr).toMatch(/monosplice push core --yes/)
   })
 
   it('reports an unreachable remote in the standard style', async () => {
@@ -382,7 +382,7 @@ describe('adopt against a remote that has nothing to adopt', () => {
     writeConfig(mono, [`    { name: 'core', path: 'core', remote: ${JSON.stringify(missing)} }`])
     await mono.commit('chore: initial', {'core/README.md': '# core\n'})
 
-    const res = await runMonolith(mono.dir, ['adopt', 'core'])
+    const res = await runMonosplice(mono.dir, ['adopt', 'core'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('cannot reach remote')
     expect(res.stderr).toContain('gone.git')

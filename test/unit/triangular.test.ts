@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest'
 import {resolveConfig} from '../../src/config.js'
 import {renderSubrepoEntry} from '../../src/core/vendor.js'
 
-const CONFIG_PATH = '/repo/monolith.config.ts'
+const CONFIG_PATH = '/repo/monosplice.config.ts'
 
 describe('resolveConfig: triangular fields', () => {
   it('defaults pushBranch to branch and leaves upstream undefined', () => {

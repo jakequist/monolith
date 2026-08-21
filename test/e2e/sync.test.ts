@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest'
-import {TestRepo, cloneRemote, runMonolith, standardFixture} from './harness.js'
+import {TestRepo, cloneRemote, runMonosplice, standardFixture} from './harness.js'
 
 const EXT_AUTHOR = {authorName: 'Ext Contributor', authorEmail: 'ext@example.test'}
 
@@ -11,13 +11,13 @@ async function seededWithExternal(opts: {configExtra?: string} = {}): Promise<{
   ext: TestRepo
 }> {
   const {root, mono, pubDir} = await standardFixture(opts)
-  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+  const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   const ext = await cloneRemote(root, pubDir, 'ext')
   return {root, mono, pub: new TestRepo(pubDir), ext}
 }
 
-/** Fast-forward the external clone to whatever monolith just published. */
+/** Fast-forward the external clone to whatever monosplice just published. */
 async function refresh(ext: TestRepo): Promise<void> {
   await ext.git(['fetch', 'origin'])
   await ext.git(['reset', '--hard', 'origin/main'])
@@ -36,7 +36,7 @@ describe('S40: sync = pull then push', () => {
     const extSha = await ext.head()
     await ext.git(['push', 'origin', 'main'])
 
-    const res = await runMonolith(mono.dir, ['sync'])
+    const res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/imported 1/)
     expect(res.stdout).toMatch(/exported \d/)
@@ -44,7 +44,7 @@ describe('S40: sync = pull then push', () => {
     // B landed in the monorepo, under core/, with its origin trailer.
     expect(mono.exists('core/b.txt')).toBe(true)
     expect(await mono.fileAt('HEAD', 'core/b.txt')).toBe('B')
-    expect((await mono.messages()).join('\n')).toContain(`Monolith-Origin: ${extSha}`)
+    expect((await mono.messages()).join('\n')).toContain(`Monosplice-Origin: ${extSha}`)
 
     // A landed in pub.
     expect(await pub.subjects()).toContain('feat: A (mono side)')
@@ -56,9 +56,9 @@ describe('S40: sync = pull then push', () => {
 
   it('tells the user to publish when the public branch does not exist', async () => {
     const {mono} = await standardFixture()
-    const res = await runMonolith(mono.dir, ['sync'])
+    const res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/monolith push core --yes/)
+    expect(res.stderr).toMatch(/monosplice push core --yes/)
   })
 
   it('refuses to start while a pull is mid-conflict', async () => {
@@ -67,12 +67,12 @@ describe('S40: sync = pull then push', () => {
     await ext.commit('docs: ext wording', {'README.md': '# core\n\next wording\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
 
-    const conflicted = await runMonolith(mono.dir, ['sync'])
+    const conflicted = await runMonosplice(mono.dir, ['sync'])
     expect(conflicted.exitCode).not.toBe(0)
     expect(conflicted.stderr).toContain('core/README.md')
     expect(conflicted.stderr).toMatch(/--continue/)
 
-    const restart = await runMonolith(mono.dir, ['sync'])
+    const restart = await runMonosplice(mono.dir, ['sync'])
     expect(restart.exitCode).not.toBe(0)
     expect(restart.stderr).toMatch(/--continue/)
   })
@@ -85,14 +85,14 @@ describe('S40: sync = pull then push', () => {
     await ext.git(['push', 'origin', 'main'])
     const pubHead = await pub.head()
 
-    const res = await runMonolith(mono.dir, ['sync'])
+    const res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode).not.toBe(0)
     expect(await pub.head()).toBe(pubHead)
   })
 
   it('reports "up to date" when neither side moved', async () => {
     const {mono} = await seededWithExternal()
-    const res = await runMonolith(mono.dir, ['sync'])
+    const res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/up to date/)
   })
@@ -114,7 +114,7 @@ describe('S41: round-trip fidelity with excludes', () => {
     await ext.commit('external: add ext.txt', {'ext.txt': 'from outside\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
 
-    const res = await runMonolith(mono.dir, ['sync'])
+    const res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const isExcluded = (p: string) => p === 'INTERNAL.md' || p.startsWith('docs/private/')
@@ -142,14 +142,14 @@ describe('S42: stability', () => {
     await ext.commit('external: B', {'b.txt': 'B\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
 
-    const sync = await runMonolith(mono.dir, ['sync'])
+    const sync = await runMonosplice(mono.dir, ['sync'])
     expect(sync.exitCode, sync.stderr).toBe(0)
 
     const monoHead = await mono.head()
     const pubHead = await pub.head()
 
     for (const cmd of [['push'], ['pull'], ['push'], ['pull']]) {
-      const res = await runMonolith(mono.dir, cmd)
+      const res = await runMonosplice(mono.dir, cmd)
       expect(res.exitCode, `${cmd.join(' ')}: ${res.stderr}`).toBe(0)
       expect(res.stdout, cmd.join(' ')).toMatch(/up to date/)
     }
@@ -157,7 +157,7 @@ describe('S42: stability', () => {
     expect(await mono.head()).toBe(monoHead)
     expect(await pub.head()).toBe(pubHead)
 
-    const again = await runMonolith(mono.dir, ['sync'])
+    const again = await runMonosplice(mono.dir, ['sync'])
     expect(again.exitCode, again.stderr).toBe(0)
     expect(again.stdout).toMatch(/up to date/)
     expect(await mono.head()).toBe(monoHead)
@@ -171,14 +171,14 @@ describe('S43: interleaved history over several rounds', () => {
 
     // Round 1: monorepo only.
     await mono.commit('r1: mono only', {'core/m1.txt': '1\n'})
-    let res = await runMonolith(mono.dir, ['sync'])
+    let res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     // Round 2: public only.
     await refresh(ext)
     await ext.commit('r2: ext only', {'e2.txt': '2\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
-    res = await runMonolith(mono.dir, ['sync'])
+    res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     // Round 3: both sides, non-conflicting.
@@ -186,7 +186,7 @@ describe('S43: interleaved history over several rounds', () => {
     await refresh(ext)
     await ext.commit('r3: ext side', {'e3.txt': '3\n'}, EXT_AUTHOR)
     await ext.git(['push', 'origin', 'main'])
-    res = await runMonolith(mono.dir, ['sync'])
+    res = await runMonosplice(mono.dir, ['sync'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const monoSubjects = await mono.subjects()
@@ -212,7 +212,7 @@ describe('S43: interleaved history over several rounds', () => {
 
     const monoHead = await mono.head()
     const pubHead = await pub.head()
-    const settle = await runMonolith(mono.dir, ['sync'])
+    const settle = await runMonosplice(mono.dir, ['sync'])
     expect(settle.exitCode, settle.stderr).toBe(0)
     expect(settle.stdout).toMatch(/up to date/)
     expect(await mono.head()).toBe(monoHead)

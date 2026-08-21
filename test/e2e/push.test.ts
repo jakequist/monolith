@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {describe, expect, it} from 'vitest'
-import {TestRepo, cloneRemote, runMonolith, standardFixture, writeConfig} from './harness.js'
+import {TestRepo, cloneRemote, runMonosplice, standardFixture, writeConfig} from './harness.js'
 
 /** Seed the fixture and return a TestRepo view of the bare public remote. */
 async function seeded(opts: {configExtra?: string} = {}): Promise<{
@@ -11,7 +11,7 @@ async function seeded(opts: {configExtra?: string} = {}): Promise<{
   pub: TestRepo
 }> {
   const {root, mono, pubDir} = await standardFixture(opts)
-  const res = await runMonolith(mono.dir, ['push', 'core', '--yes'])
+  const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
   expect(res.exitCode, res.stderr).toBe(0)
   return {root, mono, pubDir, pub: new TestRepo(pubDir)}
 }
@@ -25,7 +25,7 @@ describe('S10: one new mono commit touching core', () => {
       {authorName: 'Ada Lovelace', authorEmail: 'ada@example.test'},
     )
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/exported 1 commit/)
 
@@ -37,7 +37,7 @@ describe('S10: one new mono commit touching core', () => {
     expect(authors[1]).toBe('Ada Lovelace <ada@example.test>')
 
     const messages = await pub.messages()
-    expect(messages[1]).toContain(`Monolith-Source: ${monoSha}`)
+    expect(messages[1]).toContain(`Monosplice-Source: ${monoSha}`)
 
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
   })
@@ -49,7 +49,7 @@ describe('S11: commits touching only private dirs', () => {
     const before = await pub.head()
     await mono.commit('chore: website copy', {'website/index.html': '<p>hi</p>\n'})
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/up to date/)
     expect(await pub.head()).toBe(before)
@@ -65,7 +65,7 @@ describe('S12: commit spanning core and private dirs', () => {
       'private/plan.md': privateContent,
     })
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
@@ -88,7 +88,7 @@ describe('S13: multiple pending commits', () => {
     await mono.commit('feat: two', {'core/two.txt': '2\n'})
     await mono.commit('feat: three', {'core/three.txt': '3\n'})
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/exported 3 commit/)
 
@@ -102,12 +102,12 @@ describe('S14: push twice', () => {
     const {mono, pub} = await seeded()
     await mono.commit('feat: one', {'core/one.txt': '1\n'})
 
-    const first = await runMonolith(mono.dir, ['push'])
+    const first = await runMonosplice(mono.dir, ['push'])
     expect(first.exitCode, first.stderr).toBe(0)
     const head = await pub.head()
     const count = (await pub.subjects()).length
 
-    const second = await runMonolith(mono.dir, ['push'])
+    const second = await runMonosplice(mono.dir, ['push'])
     expect(second.exitCode, second.stderr).toBe(0)
     expect(second.stdout).toMatch(/up to date/)
     expect(await pub.head()).toBe(head)
@@ -121,18 +121,18 @@ describe('S15: excluded files on push', () => {
     const before = await pub.head()
 
     await mono.commit('chore: internal notes', {'core/INTERNAL.md': 'v1\n'})
-    const onlyExcluded = await runMonolith(mono.dir, ['push'])
+    const onlyExcluded = await runMonosplice(mono.dir, ['push'])
     expect(onlyExcluded.exitCode, onlyExcluded.stderr).toBe(0)
     expect(onlyExcluded.stdout).toMatch(/up to date/)
     expect(await pub.head()).toBe(before)
 
     await mono.commit('chore: update internal notes', {'core/INTERNAL.md': 'v2\n'})
-    const stillExcluded = await runMonolith(mono.dir, ['push'])
+    const stillExcluded = await runMonosplice(mono.dir, ['push'])
     expect(stillExcluded.exitCode, stillExcluded.stderr).toBe(0)
     expect(await pub.head()).toBe(before)
 
     await mono.commit('feat: real change', {'core/INTERNAL.md': 'v3\n', 'core/real.txt': 'real\n'})
-    const mixed = await runMonolith(mono.dir, ['push'])
+    const mixed = await runMonosplice(mono.dir, ['push'])
     expect(mixed.exitCode, mixed.stderr).toBe(0)
     expect(mixed.stdout).toMatch(/exported 1 commit/)
     expect(await pub.subjects()).toEqual(['Initial import of core', 'feat: real change'])
@@ -149,13 +149,13 @@ describe('S16: rewriteMessage hook', () => {
     })
     await mono.commit('feat: hooked', {'core/hooked.txt': 'yes\n'})
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const subjects = await pub.subjects()
     expect(subjects[subjects.length - 1]).toBe('feat: hooked [oss]')
     const messages = await pub.messages()
-    expect(messages[messages.length - 1]).toContain('Monolith-Source: ')
+    expect(messages[messages.length - 1]).toContain('Monosplice-Source: ')
   })
 })
 
@@ -167,11 +167,11 @@ describe('S17: pure imports are tree-no-ops on push', () => {
     await ext.commit('external: add EXTERNAL.md', {'EXTERNAL.md': 'from outside\n'})
     await ext.git(['push', 'origin', 'main'])
 
-    const pull = await runMonolith(mono.dir, ['pull'])
+    const pull = await runMonosplice(mono.dir, ['pull'])
     expect(pull.exitCode, pull.stderr).toBe(0)
     const pubHeadAfterImport = await pub.head()
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/up to date/)
 
@@ -183,7 +183,7 @@ describe('S17: pure imports are tree-no-ops on push', () => {
 
     // Later local work still exports normally, exactly once.
     await mono.commit('feat: local work', {'core/local.txt': 'local\n'})
-    const second = await runMonolith(mono.dir, ['push'])
+    const second = await runMonosplice(mono.dir, ['push'])
     expect(second.exitCode, second.stderr).toBe(0)
     expect(second.stdout).toMatch(/exported 1 commit/)
     expect(await pub.subjects()).toEqual([
@@ -200,18 +200,18 @@ describe('S18: binary files, renames and deletions', () => {
 
     const binary = Buffer.from([0x00, 0xff, 0xfe, 0x01, 0x80, 0x7f, 0x00, 0xc3, 0x28])
     await mono.commit('feat: add binary asset', {'core/assets/logo.bin': binary})
-    let res = await runMonolith(mono.dir, ['push'])
+    let res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
 
     await mono.git(['mv', 'core/README.md', 'core/DOCS.md'])
     await mono.commit('refactor: rename readme')
-    res = await runMonolith(mono.dir, ['push'])
+    res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
 
     await mono.commit('chore: drop index', {'core/src/index.ts': null})
-    res = await runMonolith(mono.dir, ['push'])
+    res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(await pub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))
 
@@ -231,7 +231,7 @@ describe('S19: executable bit and symlinks', () => {
     fs.symlinkSync('bin/tool.sh', path.join(mono.dir, 'core/tool-link'))
     await mono.commit('feat: tool and link')
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const entries = await pub.treeEntries('HEAD')
@@ -252,7 +252,7 @@ describe('S20: unimported external commit in pub', () => {
 
     await mono.commit('feat: local work', {'core/local.txt': 'local\n'})
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/pull/i)
     expect(res.stderr).toMatch(/1/)
@@ -278,7 +278,7 @@ describe('S21: scan hook rejects a commit', () => {
     const leak = await mono.commit('feat: oops', {'core/config.ts': 'export const token = "SECRET-abc"\n'})
     await mono.commit('feat: after the leak', {'core/after.txt': 'later\n'})
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('possible secret in config.ts')
     expect(res.stderr).toContain(leak)
@@ -297,18 +297,18 @@ describe('S22: transform hook', () => {
         if (readme) {
           files.set('README.md', {
             mode: readme.mode,
-            data: Buffer.from('<!-- published by monolith -->\\n' + readme.data.toString('utf8')),
+            data: Buffer.from('<!-- published by monosplice -->\\n' + readme.data.toString('utf8')),
           })
         }
       }`,
     })
     await mono.commit('docs: update readme', {'core/README.md': '# core\n\ninternal wording\n'})
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/exported 1 commit/)
 
-    expect(await pub.fileAt('HEAD', 'README.md')).toBe('<!-- published by monolith -->\n# core\n\ninternal wording')
+    expect(await pub.fileAt('HEAD', 'README.md')).toBe('<!-- published by monosplice -->\n# core\n\ninternal wording')
     expect(mono.read('core/README.md')).toBe('# core\n\ninternal wording\n')
     expect(await mono.fileAt('HEAD', 'core/README.md')).toBe('# core\n\ninternal wording')
     expect(await pub.treeSha('HEAD')).not.toBe(await mono.treeSha('HEAD', 'core'))
@@ -320,7 +320,7 @@ describe('S82: unreachable remote', () => {
     const {root, mono} = await seeded()
     writeConfig(mono, [`    { name: 'core', path: 'core', remote: ${JSON.stringify(path.join(root, 'nope.git'))} }`])
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/nope\.git/)
   })

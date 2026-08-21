@@ -1,11 +1,11 @@
 import {describe, expect, it} from 'vitest'
-import {type TestRepo, cloneRemote, multiFixture, runMonolith} from './harness.js'
+import {type TestRepo, cloneRemote, multiFixture, runMonosplice} from './harness.js'
 
 /** Seed both subrepos of the multi fixture. */
 async function seededPair(): Promise<Awaited<ReturnType<typeof multiFixture>>> {
   const fixture = await multiFixture()
   for (const name of ['core', 'lib']) {
-    const res = await runMonolith(fixture.mono.dir, ['push', name, '--yes'])
+    const res = await runMonosplice(fixture.mono.dir, ['push', name, '--yes'])
     expect(res.exitCode, res.stderr).toBe(0)
   }
   return fixture
@@ -28,7 +28,7 @@ describe('S60: two subrepos with separate remotes', () => {
     await mono.commit('feat(core): add greeter', {'core/src/greet.ts': coreContent})
     await mono.commit('feat(lib): add helper', {'packages/lib/src/helper.ts': libContent})
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/core: exported 1 commit/)
     expect(res.stdout).toMatch(/lib: exported 1 commit/)
@@ -57,19 +57,19 @@ describe('S60: two subrepos with separate remotes', () => {
     await ext.git(['push', 'origin', 'main'])
     const extSha = await ext.head()
 
-    const res = await runMonolith(mono.dir, ['pull'])
+    const res = await runMonosplice(mono.dir, ['pull'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/lib: imported 1 commit/)
 
     expect(mono.read('packages/lib/docs/usage.md')).toBe('usage\n')
     expect(await mono.fileAt('HEAD', 'packages/lib/docs/usage.md')).toBe('usage')
     const messages = await mono.messages()
-    expect(messages[messages.length - 1]).toContain(`Monolith-Origin: ${extSha}`)
+    expect(messages[messages.length - 1]).toContain(`Monosplice-Origin: ${extSha}`)
 
     // The import must not have created a `docs/` directory at the monorepo root.
     expect(mono.exists('docs/usage.md')).toBe(false)
 
-    const after = await runMonolith(mono.dir, ['push'])
+    const after = await runMonosplice(mono.dir, ['push'])
     expect(after.exitCode, after.stderr).toBe(0)
     expect(after.stdout).toMatch(/lib: up to date/)
   })
@@ -83,7 +83,7 @@ describe('S61: named push', () => {
     await mono.commit('feat(core): core work', {'core/a.txt': 'a\n'})
     await mono.commit('feat(lib): lib work', {'packages/lib/b.txt': 'b\n'})
 
-    const first = await runMonolith(mono.dir, ['push', 'core'])
+    const first = await runMonosplice(mono.dir, ['push', 'core'])
     expect(first.exitCode, first.stderr).toBe(0)
     expect(first.stdout).toMatch(/core: exported 1 commit/)
     expect(first.stdout).not.toMatch(/lib:/)
@@ -92,13 +92,13 @@ describe('S61: named push', () => {
     expect(await libPub.head()).toBe(libHeadBefore)
     expect(await libPub.subjects()).toEqual(['Initial import of lib'])
 
-    const status = await runMonolith(mono.dir, ['status', '--json'])
+    const status = await runMonosplice(mono.dir, ['status', '--json'])
     expect(status.exitCode, status.stderr).toBe(0)
     const rows = (JSON.parse(status.stdout) as {subrepos: Array<{name: string; ahead: number}>}).subrepos
     expect(rows.find((r) => r.name === 'core')?.ahead).toBe(0)
     expect(rows.find((r) => r.name === 'lib')?.ahead).toBe(1)
 
-    const second = await runMonolith(mono.dir, ['push', 'lib'])
+    const second = await runMonosplice(mono.dir, ['push', 'lib'])
     expect(second.exitCode, second.stderr).toBe(0)
     expect(second.stdout).toMatch(/lib: exported 1 commit/)
     expect(await libPub.subjects()).toEqual(['Initial import of lib', 'feat(lib): lib work'])
@@ -116,7 +116,7 @@ describe('S62: one commit touching both subrepos', () => {
       'private/notes.md': 'do not publish 91af\n',
     })
 
-    const res = await runMonolith(mono.dir, ['push'])
+    const res = await runMonosplice(mono.dir, ['push'])
     expect(res.exitCode, res.stderr).toBe(0)
     expect(res.stdout).toMatch(/core: exported 1 commit/)
     expect(res.stdout).toMatch(/lib: exported 1 commit/)
@@ -127,7 +127,7 @@ describe('S62: one commit touching both subrepos', () => {
     // Same mono commit is the source on both sides.
     for (const pub of [corePub, libPub]) {
       const messages = await pub.messages()
-      expect(messages[messages.length - 1]).toContain(`Monolith-Source: ${monoSha}`)
+      expect(messages[messages.length - 1]).toContain(`Monosplice-Source: ${monoSha}`)
     }
 
     expect(await corePub.treeSha('HEAD')).toBe(await mono.treeSha('HEAD', 'core'))

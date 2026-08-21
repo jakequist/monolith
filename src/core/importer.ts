@@ -49,7 +49,7 @@ export interface ImportOptions {
 const STATE_FILE = 'pull-state.json'
 
 async function stateDir(root: string): Promise<string> {
-  return path.resolve(root, await git(root, ['rev-parse', '--git-dir']), 'monolith')
+  return path.resolve(root, await git(root, ['rev-parse', '--git-dir']), 'monosplice')
 }
 
 export async function sequencerPath(root: string): Promise<string> {
@@ -93,7 +93,7 @@ export async function checkImportPreconditions(
   root: string,
   subrepo: ResolvedSubrepo,
   /** Command to retry, so `adopt` does not tell the user to run `pull`. */
-  retry = `monolith pull ${subrepo.name}`,
+  retry = `monosplice pull ${subrepo.name}`,
 ): Promise<string | null> {
   if (!(await revParse(root, 'HEAD'))) {
     return `${root} has no commits yet — commit something before importing from ${subrepo.remote}.`
@@ -131,7 +131,7 @@ async function commitImport(root: string, c: PullSequencerCommit): Promise<strin
 
 function excludeWarning(subrepo: ResolvedSubrepo, relPath: string): string {
   return `warning: ${subrepo.name}: imported ${subrepo.path}/${relPath}, but it matches an exclude pattern in your config.
-The next \`monolith push ${subrepo.name}\` will DELETE it from ${subrepo.remote}.
+The next \`monosplice push ${subrepo.name}\` will DELETE it from ${subrepo.remote}.
 Rename the file or drop the pattern from \`exclude\` if you want to keep it public.`
 }
 
