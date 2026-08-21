@@ -3,3 +3,4 @@ node_modules/
 dist/
 oclif.manifest.json
 *.tsbuildinfo
+*.tgz

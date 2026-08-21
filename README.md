@@ -7,10 +7,18 @@ Keep your work in one private monorepo, and publish some of its directories as r
 ## Install
 
 ```sh
-npm install -g monolith-git
+npm install -g https://github.com/jakequist/monolith/releases/latest/download/monolith-git.tgz
 ```
 
-Requires **Node ≥ 20** and **git ≥ 2.30**. The binary is called `monolith`; the npm package is `monolith-git`.
+Releases are published as tarballs on [GitHub Releases](https://github.com/jakequist/monolith/releases), not to the npm registry — the URL above always points at the newest one. To pin a version, install its versioned asset instead:
+
+```sh
+npm install -g https://github.com/jakequist/monolith/releases/download/v0.1.0/monolith-git-0.1.0.tgz
+```
+
+Once installed, `monolith update` self-updates from GitHub Releases (`monolith update --check` just reports installed vs. latest).
+
+Requires **Node ≥ 20** and **git ≥ 2.30**. The binary is called `monolith`; the package inside the tarball is `monolith-git`.
 
 ## 60-second quickstart
 
@@ -159,7 +167,7 @@ Because the scan runs against every commit being exported — not just the final
 | `monolith status [subrepo] [--json]` | Per-subrepo "N to push, M to pull", or "in sync". `--json` prints a stable machine-readable object for CI. |
 | `monolith doctor [subrepo]` | Print the derived sync points and verify they match reality: broken commit mappings, rewritten history, unfinished pulls, unreachable remotes. Exits non-zero when it finds a problem. |
 | `monolith tag <subrepo> <tag>` | Create a lightweight tag on the public remote pointing at the commit that corresponds to monorepo HEAD. Refuses when anything is unpushed or unpulled (the tag would lie), or when the tag already exists. |
-| `monolith update [--check]` | Reinstall the CLI from npm, or just report installed vs. latest. |
+| `monolith update [--check]` | Reinstall the CLI from the newest GitHub release, or just report installed vs. latest. |
 
 ## How it works
 
@@ -234,6 +242,18 @@ This project is test-driven, and the workflow is not optional:
 
 E2E tests invoke the built binary with `execa` and assert on exit codes, stdout and resulting git state — no importing internals. "Remotes" are local bare repositories in temp directories, so the suite never touches the network. Git identities, dates and config are pinned in `test/e2e/harness.ts`, so shas and logs are reproducible; grow the harness rather than duplicating setup.
 
+### Releasing
+
+Releases are cut by pushing a tag; nothing is published by hand.
+
+```sh
+# 1. bump "version" in package.json to X.Y.Z
+git commit -am "release: vX.Y.Z"
+git tag vX.Y.Z && git push origin main vX.Y.Z
+```
+
+`.github/workflows/release.yml` then refuses the tag if it disagrees with `package.json`, runs `pnpm test:all`, packs the tarball, and creates the GitHub release with both assets: `monolith-git-X.Y.Z.tgz` (immutable, what `monolith update` installs) and `monolith-git.tgz` (the stable name behind the `/releases/latest/download/` install URL). `.github/workflows/ci.yml` runs `pnpm typecheck` and `pnpm test:all` on every push to `main` and every pull request.
+
 [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) is the living backlog. Every scenario has a stable ID (`S10`, `S42`, …) that its test name references, and items are checked off as their tests land. New behaviour starts as a new scenario there.
 
 ## Roadmap
@@ -244,6 +264,7 @@ Not built yet, in rough order of usefulness:
 - **Branch export** — sync branches other than the configured one, so feature branches and release branches can be published too.
 - **A GitHub Action** — run `monolith sync` (or at least `monolith status`) in CI on a schedule.
 - **Standalone binaries** — `oclif pack` tarballs so the CLI can be installed without a Node toolchain.
+- **npm registry publish** — a `npm install -g monolith-git` convenience alongside the GitHub release tarballs.
 
 ## License
 

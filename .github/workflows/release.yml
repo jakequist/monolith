@@ -1,0 +1,57 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Tag must match package.json version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match the package.json version ${pkg_version}." >&2
+            echo "Bump \"version\" in package.json to ${tag_version}, commit, then retag:" >&2
+            echo "  git tag -d ${GITHUB_REF_NAME} && git push origin :${GITHUB_REF_NAME} && git tag ${GITHUB_REF_NAME} && git push origin ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
+      - run: pnpm test:all
+
+      - name: Pack the release tarball
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          pnpm pack
+          cp "monolith-git-${version}.tgz" monolith-git.tgz
+          ls -l "monolith-git-${version}.tgz" monolith-git.tgz
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "monolith-git-${version}.tgz" \
+            monolith-git.tgz
