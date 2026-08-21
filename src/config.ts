@@ -26,10 +26,17 @@ export interface SubrepoConfig {
   name?: string
   /** Directory inside the monorepo, relative to the config file (e.g. "taka-core"). */
   path: string
-  /** Git URL of the public repo. */
+  /** Git URL of the public repo. With `upstream` set, this is your fork: the push destination. */
   remote: string
+  /**
+   * Git URL to pull from when it is not the repo you push to (triangular remotes). Set it and
+   * every sync decision is made against this repository; `remote` only ever receives pushes.
+   */
+  upstream?: string
   /** Branch to sync on both sides. Defaults to "main". */
   branch?: string
+  /** Triangular only: branch pushed on `remote` (your fork). Defaults to `branch`. */
+  pushBranch?: string
   /** Globs (relative to the subrepo dir) that must never be exported. */
   exclude?: string[]
   /** Rewrite an outgoing commit message (trailers are appended after this runs). */
@@ -53,7 +60,10 @@ export interface ResolvedSubrepo {
   name: string
   path: string
   remote: string
+  upstream?: string
   branch: string
+  /** Equals `branch` unless the config says otherwise; only meaningful with `upstream`. */
+  pushBranch: string
   exclude: string[]
   rewriteMessage?: SubrepoConfig['rewriteMessage']
   transform?: SubrepoConfig['transform']
@@ -87,7 +97,9 @@ const subrepoSchema = z.object({
   name: z.string().min(1).optional(),
   path: z.string({required_error: 'path is required'}).min(1, 'path may not be empty'),
   remote: z.string({required_error: 'remote is required'}).min(1, 'remote may not be empty'),
+  upstream: z.string().min(1, 'upstream may not be empty').optional(),
   branch: z.string().min(1).optional(),
+  pushBranch: z.string().min(1, 'pushBranch may not be empty').optional(),
   exclude: z.array(z.string().min(1)).optional(),
   rewriteMessage: z.custom<SubrepoConfig['rewriteMessage']>((v) => v === undefined || typeof v === 'function', 'rewriteMessage must be a function').optional(),
   transform: z.custom<SubrepoConfig['transform']>((v) => v === undefined || typeof v === 'function', 'transform must be a function').optional(),
@@ -121,11 +133,26 @@ export function resolveConfig(raw: unknown, configPath: string): ResolvedSubrepo
     } catch (err) {
       throw new ConfigError(configPath, `  subrepos.${idx}.path — ${(err as Error).message}`)
     }
+    if (s.pushBranch !== undefined && s.upstream === undefined) {
+      throw new ConfigError(
+        configPath,
+        `  subrepos.${idx}.pushBranch — pushBranch requires upstream: it names the branch monolith pushes on your fork, and without \`upstream\` there is no fork/upstream split. Drop pushBranch, or set \`upstream\` to the repository you pull from.`,
+      )
+    }
+    if (s.upstream !== undefined && s.upstream === s.remote) {
+      throw new ConfigError(
+        configPath,
+        `  subrepos.${idx}.upstream — upstream and remote are the same repository (${s.remote}), so there is no triangle. Drop \`upstream\`, or point it at the repository you pull from.`,
+      )
+    }
+    const branch = s.branch ?? 'main'
     return {
       name: s.name ?? path.posix.basename(normPath),
       path: normPath,
       remote: s.remote,
-      branch: s.branch ?? 'main',
+      ...(s.upstream === undefined ? {} : {upstream: s.upstream}),
+      branch,
+      pushBranch: s.pushBranch ?? branch,
       exclude: s.exclude ?? [],
       rewriteMessage: s.rewriteMessage,
       transform: s.transform,

@@ -29,6 +29,12 @@ submodule-free ergonomics."
     `rev-list <pubHead> --not <each imported sha>` (fed via `--stdin`), minus our own exports.
     Every ancestor of a reflected commit is reflected; a one-commit `adopt` of a 200-commit
     repo must never read as "200 to pull".
+- **Triangular mode: upstream decides, the fork is disposable.** When a subrepo configures
+  `upstream`, every sync decision (fetch, anchors, unreflected, ahead/behind) is made against
+  upstream and *only* upstream — the fork is never consulted for imports. `remote` is the push
+  destination: monolith rebuilds its `pushBranch` as upstream head + replayed patches on every
+  push and writes it with `--force-with-lease`, because that branch is a derived artifact
+  monolith owns. Upstream is never written to — no branch, no tag.
 - **First contact is detected, not configured.** Outbound (`pubHead` null) is a
   confirmation-gated first `push` — TTY prompt, `--yes` otherwise, plus `--full-history`.
   Inbound (pub has unrelated history) is `adopt`. Unrelated + either direction → refuse and

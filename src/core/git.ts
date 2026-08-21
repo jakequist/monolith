@@ -275,3 +275,18 @@ export async function fetchBranch(
 export async function pushRef(cwd: string, remote: string, sha: string, dstRef: string): Promise<void> {
   await git(cwd, ['push', remote, `${sha}:${dstRef}`])
 }
+
+/**
+ * Replace a remote ref, but only while it still holds `expect`. Used for the one ref monolith
+ * owns outright — the fork's push branch, which is rebuilt from upstream on every push — so
+ * that a rewrite still refuses when somebody else moved the branch in the meantime.
+ */
+export async function pushRefWithLease(
+  cwd: string,
+  remote: string,
+  sha: string,
+  dstRef: string,
+  expect: string,
+): Promise<void> {
+  await git(cwd, ['push', `--force-with-lease=${dstRef}:${expect}`, remote, `${sha}:${dstRef}`])
+}

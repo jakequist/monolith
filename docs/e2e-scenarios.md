@@ -116,12 +116,12 @@ subrepo, `core/` = the configured subrepo path.
 > `remote` becomes the push destination (your fork); optional `pushBranch`
 > (default: `branch`). Without `upstream`, behavior is byte-for-byte today's.
 
-- [ ] S110 With `upstream` set: `pull` imports from upstream even when the fork remote is empty or stale; the fork is never fetched for import decisions.
-- [ ] S111 `push` exports local patches to `remote`'s `pushBranch`, parented on the UPSTREAM head (PR-ready: fork branch is upstream + patches, linear); upstream repo is never written to.
-- [ ] S112 Upstream advances while local patches exist: `sync` imports upstream then re-exports patches on top of the new upstream head, updating the fork branch (force-with-lease — the branch is ours); resulting fork branch = upstream head + patches, nothing lost.
-- [ ] S113 No `upstream` configured → push/pull/status behavior identical to before (explicit regression flow, non-force push preserved).
-- [ ] S114 Unreachable upstream vs unreachable fork remote → two distinct, correctly-attributed error messages; status attributes each side.
-- [ ] S115 `vendor <upstream-url> --fork <fork-url>` writes both `upstream` and `remote` (+ default pushBranch) in the config entry; pull comes from upstream, push goes to fork.
-- [ ] S116 PR merged upstream as a fast-forward/merge (exported commits with their `Monolith-Source` trailers land in upstream) → `pull` is a no-op, fixed point holds.
-- [ ] S117 PR squash-merged upstream (same tree, new commit, trailers lost) → `pull` records it (possibly as an empty import), `push` stays up to date; no ping-pong, trees converged.
-- [ ] S118 `status`/`doctor` with `upstream`: ahead/behind measured against upstream; doctor fetches and reports both sides without false alarms.
+- [x] S110 With `upstream` set: `pull` imports from upstream even when the fork remote is empty or stale; the fork is never fetched for import decisions.
+- [x] S111 `push` exports local patches to `remote`'s `pushBranch`, parented on the UPSTREAM head (PR-ready: fork branch is upstream + patches, linear); upstream repo is never written to.
+- [x] S112 Upstream advances while local patches exist: `sync` imports upstream then re-exports patches on top of the new upstream head, updating the fork branch (force-with-lease — the branch is ours); resulting fork branch = upstream head + patches, nothing lost.
+- [x] S113 No `upstream` configured → push/pull/status behavior identical to before (explicit regression flow, non-force push preserved).
+- [x] S114 Unreachable upstream vs unreachable fork remote → two distinct, correctly-attributed error messages; status attributes each side.
+- [x] S115 `vendor <upstream-url> --fork <fork-url>` writes both `upstream` and `remote` (+ default pushBranch) in the config entry; pull comes from upstream, push goes to fork.
+- [x] S116 PR merged upstream as a fast-forward/merge (exported commits with their `Monolith-Source` trailers land in upstream) → `pull` is a no-op, fixed point holds.
+- [x] S117 PR squash-merged upstream (same tree, new commit, trailers lost) → `pull` records it (possibly as an empty import), `push` stays up to date; no ping-pong, trees converged.
+- [x] S118 `status`/`doctor` with `upstream`: ahead/behind measured against upstream; doctor fetches and reports both sides without false alarms.

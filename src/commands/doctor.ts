@@ -5,7 +5,7 @@ import {computeExports, exportBaseRewritten, planExport} from '../core/exporter.
 import {filteredSubtree} from '../core/filter.js'
 import {git, revList} from '../core/git.js'
 import {readSequencer, sequencerPath} from '../core/importer.js'
-import {loadSyncView, type SyncView} from '../core/sync.js'
+import {loadSyncView, pullSource, tryLoadForkState, type SyncView} from '../core/sync.js'
 import {ORIGIN_TRAILER, SOURCE_TRAILER} from '../core/trailers.js'
 
 export default class Doctor extends MonolithCommand {
@@ -69,16 +69,22 @@ export default class Doctor extends MonolithCommand {
   }
 
   private async checkSubrepo(root: string, subrepo: ResolvedSubrepo): Promise<SyncView | null> {
+    const triangular = subrepo.upstream !== undefined
     this.log(subrepo.name)
     this.log(`  path:          ${subrepo.path}/`)
-    this.log(`  remote:        ${subrepo.remote} (${subrepo.branch})`)
+    if (triangular) {
+      this.log(`  upstream:      ${subrepo.upstream} (${subrepo.branch})`)
+      this.log(`  fork:          ${subrepo.remote} (${subrepo.pushBranch})`)
+    } else {
+      this.log(`  remote:        ${subrepo.remote} (${subrepo.branch})`)
+    }
 
     let view: SyncView
     try {
       view = await loadSyncView(root, subrepo)
     } catch (err) {
       this.problem(
-        `cannot reach ${subrepo.remote}`,
+        `cannot reach ${triangular ? 'upstream ' : ''}${pullSource(subrepo)}`,
         ...(err as Error).message.split('\n'),
         'Fix the URL in your config or your network/credentials, then run `monolith doctor` again.',
       )
@@ -87,13 +93,16 @@ export default class Doctor extends MonolithCommand {
 
     if (view.pubHead === null) {
       this.problem(
-        `not published yet — ${subrepo.remote} has no ${subrepo.branch} branch.`,
-        `Run \`monolith push ${subrepo.name} --yes\` to publish it for the first time.`,
+        `not published yet — ${pullSource(subrepo)} has no ${subrepo.branch} branch.`,
+        triangular
+          ? `Fix \`upstream\` or \`branch\` in your config: monolith builds the fork branch on the upstream head.`
+          : `Run \`monolith push ${subrepo.name} --yes\` to publish it for the first time.`,
       )
       return null
     }
 
-    this.log(`  pub head:      ${view.pubHead}`)
+    this.log(`  ${triangular ? 'upstream head:' : 'pub head:     '} ${view.pubHead}`)
+    if (triangular) await this.reportFork(root, subrepo)
     if (view.lastExportedMono) {
       const pub = view.exportedMonoToPub.get(view.lastExportedMono) ?? '(unknown)'
       this.log(`  last exported: mono ${view.lastExportedMono}`)
@@ -125,6 +134,28 @@ export default class Doctor extends MonolithCommand {
 
     await this.verifyMapping(root, subrepo, view)
     return view
+  }
+
+  /**
+   * The fork is reported separately from upstream and never conflated with it: an unreachable
+   * fork blocks `push` and nothing else, so it must not read like the sync source is broken.
+   */
+  private async reportFork(root: string, subrepo: ResolvedSubrepo): Promise<void> {
+    const {state, error} = await tryLoadForkState(root, subrepo)
+    if (error) {
+      this.problem(
+        `cannot reach fork remote ${subrepo.remote}`,
+        ...error.message.split('\n'),
+        `Pulling still works — it only talks to ${subrepo.upstream} — but \`monolith push ${subrepo.name}\` will fail.`,
+        'Fix `remote` in your config or your network/credentials, then run `monolith doctor` again.',
+      )
+      return
+    }
+    if (!state?.head) {
+      this.log(`  fork head:     (no ${subrepo.pushBranch} branch yet)`)
+      return
+    }
+    this.log(`  fork head:     ${state.head}`)
   }
 
   private async reportCounts(root: string, subrepo: ResolvedSubrepo, view: SyncView): Promise<void> {

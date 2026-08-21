@@ -24,6 +24,17 @@ export default class Tag extends MonolithCommand {
     const root = project.root
     const reporter = this.reporter()
 
+    // A triangular subrepo has no commit monolith may tag: `remote` is a fork whose branch it
+    // rebuilds, and `upstream` belongs to someone else.
+    if (subrepo.upstream !== undefined) {
+      this.error(
+        `${subrepo.name}: \`upstream\` is set, so ${subrepo.remote} is your fork and ${subrepo.upstream} is someone else's repository.
+Tags belong to the upstream maintainers, and monolith rebuilds the fork's ${subrepo.pushBranch} branch on every push, so a tag there would soon point at abandoned history. No tag was created.
+If you really want one on your fork, create it yourself:
+  git push ${subrepo.remote} <sha>:refs/tags/${args.tag}`,
+      )
+    }
+
     const view = await loadView(root, subrepo, reporter)
     await requirePublished(root, subrepo, view, reporter)
     // requirePublished exits the process when pubHead is null; TS cannot see that.

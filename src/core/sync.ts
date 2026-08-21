@@ -1,6 +1,7 @@
 import type {ResolvedSubrepo} from '../config.js'
 import {filteredSubtree} from './filter.js'
 import {
+  GitError,
   existingCommits,
   fetchBranch,
   git,
@@ -15,6 +16,56 @@ import {ORIGIN_TRAILER, SOURCE_TRAILER} from './trailers.js'
 /** Where a subrepo's public branch is mirrored inside the monorepo's object db. */
 export function remoteTrackingRef(name: string): string {
   return `refs/monolith/${name}/remote`
+}
+
+/** Where the fork's push branch is mirrored (triangular mode only). */
+export function forkTrackingRef(name: string): string {
+  return `refs/monolith/${name}/fork`
+}
+
+/**
+ * The repository every sync decision is made against. With `upstream` configured that is
+ * upstream and only upstream: the fork is a derived artifact monolith rebuilds, so consulting
+ * it for imports or anchors would let our own exports masquerade as public history.
+ */
+export function pullSource(subrepo: ResolvedSubrepo): string {
+  return subrepo.upstream ?? subrepo.remote
+}
+
+/** Is this subrepo pulled from one repository and pushed to another? */
+export function isTriangular(subrepo: ResolvedSubrepo): boolean {
+  return subrepo.upstream !== undefined
+}
+
+/** What the fork's push branch looks like right now. Triangular mode only. */
+export interface ForkState {
+  /** Fork branch head, or null when the fork does not have that branch yet. */
+  head: string | null
+}
+
+/**
+ * Mirror the fork's push branch locally. `lsRemoteBranch` first, exactly as `loadSyncView`
+ * does, so an unreachable fork raises a GitError the caller can attribute to the fork rather
+ * than a fetch failure that reads like the branch is missing.
+ */
+export async function loadForkState(root: string, subrepo: ResolvedSubrepo): Promise<ForkState> {
+  const head = await lsRemoteBranch(root, subrepo.remote, subrepo.pushBranch)
+  if (head === null) return {head: null}
+  await fetchBranch(root, subrepo.remote, subrepo.pushBranch, forkTrackingRef(subrepo.name))
+  return {head}
+}
+
+/** Fork state for reporting: an unreachable fork is a note, not a crash. */
+export async function tryLoadForkState(
+  root: string,
+  subrepo: ResolvedSubrepo,
+): Promise<{state: ForkState | null; error: GitError | null}> {
+  try {
+    return {state: await loadForkState(root, subrepo), error: null}
+  } catch (err) {
+    if (err instanceof GitError) return {state: null, error: err}
+    throw err
+  }
 }
 
 /** A public commit claiming to export a monorepo commit that this clone does not have. */
@@ -160,7 +211,8 @@ async function findUnreflectedPub(
  */
 export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Promise<SyncView> {
   const trackingRef = remoteTrackingRef(subrepo.name)
-  const pubHead = await lsRemoteBranch(root, subrepo.remote, subrepo.branch)
+  const source = pullSource(subrepo)
+  const pubHead = await lsRemoteBranch(root, source, subrepo.branch)
 
   const originByMono = (await revParse(root, 'HEAD'))
     ? await trailerValues(root, ORIGIN_TRAILER, ['HEAD'])
@@ -172,7 +224,7 @@ export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Prom
 
   if (pubHead === null) return {...unpublishedView(subrepo.name), importedPubShas}
 
-  await fetchBranch(root, subrepo.remote, subrepo.branch, trackingRef)
+  await fetchBranch(root, source, subrepo.branch, trackingRef)
 
   const sourceByPub = await trailerValues(root, SOURCE_TRAILER, [trackingRef])
   const exportedMonoToPub = new Map<string, string>()

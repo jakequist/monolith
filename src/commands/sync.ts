@@ -25,10 +25,10 @@ export default class Sync extends MonolithCommand {
     // later subrepo would be published from a monorepo that is only half converged.
     for (const subrepo of this.selectSubrepos(project, args.subrepo)) {
       const imported = await importSubrepo(root, subrepo, reporter)
-      const exported = await exportSubrepo(root, subrepo, reporter)
+      const {pushed} = await exportSubrepo(root, subrepo, reporter)
 
-      if (imported === 0 && exported === 0) this.log(`✓ ${subrepo.name}: up to date`)
-      else this.log(`✓ ${subrepo.name}: imported ${imported}, exported ${exported}`)
+      if (imported === 0 && pushed === 0) this.log(`✓ ${subrepo.name}: up to date`)
+      else this.log(`✓ ${subrepo.name}: imported ${imported}, exported ${pushed}`)
     }
   }
 }

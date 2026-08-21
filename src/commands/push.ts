@@ -2,7 +2,14 @@ import readline from 'node:readline/promises'
 import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
 import {MonolithCommand} from '../lib/base.js'
-import {SubrepoFailure, exportSubrepo, firstPublish, loadView, type Reporter} from '../lib/ops.js'
+import {
+  SubrepoFailure,
+  exportSubrepo,
+  firstPublish,
+  loadView,
+  upstreamHasNoBranch,
+  type Reporter,
+} from '../lib/ops.js'
 
 interface PushFlags {
   yes: boolean
@@ -73,6 +80,8 @@ export default class Push extends MonolithCommand {
   ): Promise<void> {
     const view = await loadView(root, subrepo, r)
 
+    if (view.pubHead === null && subrepo.upstream !== undefined) r.fail(upstreamHasNoBranch(subrepo))
+
     if (view.pubHead === null) {
       const result = await firstPublish(root, subrepo, r, {
         fullHistory: flags['full-history'],
@@ -90,9 +99,15 @@ Nothing was pushed. Run \`monolith push ${subrepo.name}\` to export new commits.
       )
     }
 
-    const exported = await exportSubrepo(root, subrepo, r, view)
-    if (exported === 0) this.log(`✓ ${subrepo.name}: up to date`)
-    else this.log(`✓ ${subrepo.name}: exported ${exported} commit(s)`)
+    const {pushed, awaiting} = await exportSubrepo(root, subrepo, r, view)
+    const fork = subrepo.upstream === undefined ? '' : ` to ${subrepo.remote} (${subrepo.pushBranch})`
+
+    if (pushed > 0) this.log(`✓ ${subrepo.name}: exported ${pushed} commit(s)${fork}`)
+    else if (awaiting > 0) {
+      this.log(
+        `✓ ${subrepo.name}: up to date — ${subrepo.remote} (${subrepo.pushBranch}) already carries ${awaiting} commit(s), awaiting an upstream merge`,
+      )
+    } else this.log(`✓ ${subrepo.name}: up to date`)
   }
 
   /**

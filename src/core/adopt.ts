@@ -1,5 +1,6 @@
 import type {ResolvedSubrepo} from '../config.js'
 import {git, gitBuffer} from './git.js'
+import {pullSource} from './sync.js'
 import {ORIGIN_TRAILER, appendTrailer} from './trailers.js'
 
 /**
@@ -14,7 +15,7 @@ import {ORIGIN_TRAILER, appendTrailer} from './trailers.js'
  * entry too, but both record the same anchor.
  */
 export function originMessage(verb: string, subrepo: ResolvedSubrepo, pubHead: string): string {
-  const subject = `${verb} ${subrepo.name} from ${subrepo.remote} @ ${pubHead.slice(0, 10)}\n`
+  const subject = `${verb} ${subrepo.name} from ${pullSource(subrepo)} @ ${pubHead.slice(0, 10)}\n`
   return appendTrailer(subject, ORIGIN_TRAILER, pubHead)
 }
 

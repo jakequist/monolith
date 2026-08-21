@@ -15,7 +15,7 @@ import {
   runImport,
   sequencerPath,
 } from '../core/importer.js'
-import {loadSyncView, type SyncView} from '../core/sync.js'
+import {loadSyncView, pullSource, type SyncView} from '../core/sync.js'
 
 /**
  * How a command talks to the terminal. Keeps the per-subrepo operations shared by
@@ -40,11 +40,12 @@ export class SubrepoFailure extends Error {
   }
 }
 
-/** Derive the sync view, turning an unreachable remote into a user-facing error. */
+/** Derive the sync view, turning an unreachable source repository into a user-facing error. */
 export async function loadView(root: string, subrepo: ResolvedSubrepo, r: Reporter): Promise<SyncView> {
   return loadSyncView(root, subrepo).catch((err: unknown) => {
     if (err instanceof GitError) {
-      r.fail(`${subrepo.name}: cannot reach remote ${subrepo.remote}\n${err.stderr}`)
+      const what = subrepo.upstream === undefined ? 'remote' : 'upstream'
+      r.fail(`${subrepo.name}: cannot reach ${what} ${pullSource(subrepo)}\n${err.stderr}`)
     }
     throw err
   })
@@ -52,13 +53,13 @@ export async function loadView(root: string, subrepo: ResolvedSubrepo, r: Report
 
 /** Neither side has anything: the one matrix cell where no monolith command can help. */
 export function nothingExistsYet(subrepo: ResolvedSubrepo): string {
-  return `${subrepo.name}: nothing exists yet — ${subrepo.path}/ has no committed files at HEAD, and ${subrepo.remote} has no ${subrepo.branch} branch.
+  return `${subrepo.name}: nothing exists yet — ${subrepo.path}/ has no committed files at HEAD, and ${pullSource(subrepo)} has no ${subrepo.branch} branch.
 Commit something under ${subrepo.path}/ and run \`monolith push ${subrepo.name} --yes\` to publish it, or run \`monolith adopt ${subrepo.name}\` once the remote has content.`
 }
 
 /** The public branch has history, but nothing on either side references the other. */
 export function unrelatedRemote(subrepo: ResolvedSubrepo, consequence: string): string {
-  return `${subrepo.name}: ${subrepo.remote} (${subrepo.branch}) has history that is unrelated to this monorepo — no commit on either side references the other.
+  return `${subrepo.name}: ${pullSource(subrepo)} (${subrepo.branch}) has history that is unrelated to this monorepo — no commit on either side references the other.
 ${consequence} To connect the two repositories, run:
   monolith adopt ${subrepo.name}`
 }
@@ -71,11 +72,23 @@ export async function requirePublished(
   r: Reporter,
 ): Promise<void> {
   if (view.pubHead !== null) return
+  if (subrepo.upstream !== undefined) r.fail(upstreamHasNoBranch(subrepo))
   const head = await revParse(root, 'HEAD')
   if (!head || !(await hasCommittedFiles(root, head, subrepo))) r.fail(nothingExistsYet(subrepo))
   r.fail(
     `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch — this subrepo has not been published yet.\nRun \`monolith push ${subrepo.name} --yes\` to publish ${subrepo.path}/ for the first time.`,
   )
+}
+
+/**
+ * Triangular first contact has no sensible answer: the fork branch is built *on* the upstream
+ * head, so with no upstream branch there is nothing to base it on and publishing a fork from
+ * scratch would defeat the point of the triangle.
+ */
+export function upstreamHasNoBranch(subrepo: ResolvedSubrepo): string {
+  return `${subrepo.name}: upstream ${subrepo.upstream} has no ${subrepo.branch} branch, so monolith has nothing to base the fork branch on.
+Nothing was changed. Fix \`upstream\` or \`branch\` in your config, or drop \`upstream\` to publish ${subrepo.path}/ to ${subrepo.remote} directly:
+  monolith push ${subrepo.name} --yes`
 }
 
 /** Shared by `pull` and `sync`: neither may start while a sequencer sits on disk. */
@@ -109,13 +122,24 @@ export async function importSubrepo(root: string, subrepo: ResolvedSubrepo, r: R
   return result.imported.length
 }
 
-/** Export every pending monorepo commit. Returns how many public commits were created. */
+/** What one export run did, from the caller's point of view. */
+export interface ExportSummary {
+  /** Commits written to the remote by this run. */
+  pushed: number
+  /**
+   * Triangular only: commits the fork branch already carries byte-for-byte, so nothing was
+   * written. They stay "to push" until upstream merges them.
+   */
+  awaiting: number
+}
+
+/** Export every pending monorepo commit. */
 export async function exportSubrepo(
   root: string,
   subrepo: ResolvedSubrepo,
   r: Reporter,
   loaded?: SyncView,
-): Promise<number> {
+): Promise<ExportSummary> {
   const view = loaded ?? (await loadView(root, subrepo, r))
   await requirePublished(root, subrepo, view, r)
   if (!view.related) r.fail(unrelatedRemote(subrepo, `Nothing was pushed to ${subrepo.remote}.`))
@@ -125,17 +149,26 @@ export async function exportSubrepo(
 
   if (view.unreflectedPub.length > 0) {
     r.fail(
-      `${subrepo.name}: ${view.unreflectedPub.length} commit(s) on ${subrepo.remote} have not been imported yet.\nNothing was pushed. Run \`monolith pull ${subrepo.name}\` first, then push again.`,
+      `${subrepo.name}: ${view.unreflectedPub.length} commit(s) on ${pullSource(subrepo)} have not been imported yet.\nNothing was pushed. Run \`monolith pull ${subrepo.name}\` first, then push again.`,
     )
   }
 
   const {candidates} = await planExport(root, subrepo, view)
   const result = await runExport(root, subrepo, view, {candidates}).catch((err: unknown) => {
+    // Everything up to the push is local, so in triangular mode a git failure here is the
+    // fork's — never upstream's, which this code path does not write to at all.
+    if (subrepo.upstream !== undefined && err instanceof GitError) {
+      r.fail(
+        `${subrepo.name}: cannot push to fork remote ${subrepo.remote} (${subrepo.pushBranch})\n${err.stderr || err.message}\nNothing was pushed. Fix \`remote\` in your config or your network/credentials, then run \`monolith push ${subrepo.name}\` again.`,
+      )
+    }
     if (err instanceof GitError) r.fail(`${subrepo.name}: ${err.message}`)
     r.fail(`${subrepo.name}: ${(err as Error).message}\nNothing was pushed to ${subrepo.remote}.`)
   })
 
-  return result.exported.length
+  return result.pushed
+    ? {pushed: result.exported.length, awaiting: 0}
+    : {pushed: 0, awaiting: result.exported.length}
 }
 
 export interface FirstPublishOptions {

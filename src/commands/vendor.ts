@@ -8,7 +8,7 @@ import {hasCommittedFiles} from '../core/filter.js'
 import {EMPTY_TREE, GitError, fetchBranch, git, lsRemoteBranch, revParse} from '../core/git.js'
 import {readSequencer} from '../core/importer.js'
 import {normalizeSubrepoPath} from '../core/paths.js'
-import {remoteTrackingRef} from '../core/sync.js'
+import {pullSource, remoteTrackingRef} from '../core/sync.js'
 import {
   checkVendorPreconditions,
   deriveVendorName,
@@ -28,12 +28,16 @@ export default class Vendor extends MonolithCommand {
     path: Flags.string({description: 'Directory to vendor into (default: vendor/<name>)'}),
     name: Flags.string({description: 'Subrepo name (default: the repo basename of the URL)'}),
     branch: Flags.string({description: 'Branch to track', default: 'main'}),
+    fork: Flags.string({
+      description: 'Your fork of the repository: pull from <url>, push patches to this remote',
+    }),
   }
 
   static examples = [
     '<%= config.bin %> <%= command.id %> git@github.com:lodash/lodash.git',
     '<%= config.bin %> <%= command.id %> https://github.com/lodash/lodash.git --path third_party/lodash',
     '<%= config.bin %> <%= command.id %> git@github.com:lodash/lodash.git --branch 4.17-stable',
+    '<%= config.bin %> <%= command.id %> git@github.com:lodash/lodash.git --fork git@github.com:you/lodash.git',
   ]
 
   async run(): Promise<void> {
@@ -52,8 +56,11 @@ export default class Vendor extends MonolithCommand {
     if (problem) this.error(problem)
     await this.requireFreePath(root, entry)
 
+    // The tree, the anchor and every later sync decision come from the pull source: with
+    // `--fork` that is upstream, and the fork is only ever written to by `push`.
+    const source = pullSource(entry)
     const pubHead = await this.resolveRemoteHead(root, entry)
-    await fetchBranch(root, entry.remote, entry.branch, remoteTrackingRef(entry.name))
+    await fetchBranch(root, source, entry.branch, remoteTrackingRef(entry.name))
 
     await this.writeConfigEntry(project, entry)
 
@@ -62,14 +69,27 @@ export default class Vendor extends MonolithCommand {
     await applyTreeInto(root, entry, EMPTY_TREE, pubTree)
     await commitStaged(root, vendorMessage(entry, pubHead))
 
-    this.log(`✓ vendored ${entry.name} at ${entry.path} (tracking ${entry.remote}#${entry.branch})`)
+    this.log(`✓ vendored ${entry.name} at ${entry.path} (tracking ${source}#${entry.branch})`)
     this.log(
       `  \`monolith pull ${entry.name}\` brings in upstream updates; your own commits under ${entry.path}/ are three-way merged with them.`,
     )
+    if (entry.upstream !== undefined) {
+      this.log(
+        `  \`monolith push ${entry.name}\` rebuilds ${entry.remote} (${entry.pushBranch}) as ${source}'s ${entry.branch} plus your patches — open the PR from there.`,
+      )
+    }
   }
 
   /** Turn the URL and flags into the subrepo entry the rest of monolith already understands. */
-  private plan(url: string, flags: {path?: string; name?: string; branch: string}): ResolvedSubrepo {
+  private plan(
+    url: string,
+    flags: {path?: string; name?: string; branch: string; fork?: string},
+  ): ResolvedSubrepo {
+    if (flags.fork === url) {
+      this.error(
+        `--fork ${flags.fork} is the same URL you are vendoring, so there is no fork to push to.\nNothing was changed. Drop --fork, or point it at your own fork of ${url}.`,
+      )
+    }
     const name = flags.name ?? deriveVendorName(url)
     if (!name) {
       this.error(
@@ -82,7 +102,16 @@ export default class Vendor extends MonolithCommand {
     } catch (err) {
       this.error(`${(err as Error).message}\nNothing was changed. Pick another directory with \`--path <dir>\`.`)
     }
-    return {name, path: subPath, remote: url, branch: flags.branch, exclude: []}
+    return {
+      name,
+      path: subPath,
+      // With a fork, `remote` is where we push and the vendored URL becomes `upstream`.
+      remote: flags.fork ?? url,
+      ...(flags.fork === undefined ? {} : {upstream: url}),
+      branch: flags.branch,
+      pushBranch: flags.branch,
+      exclude: [],
+    }
   }
 
   /** The name and the path must both be free, and the path may not nest inside a subrepo. */
@@ -122,15 +151,17 @@ export default class Vendor extends MonolithCommand {
   }
 
   private async resolveRemoteHead(root: string, entry: ResolvedSubrepo): Promise<string> {
-    const pubHead = await lsRemoteBranch(root, entry.remote, entry.branch).catch((err: unknown) => {
+    const source = pullSource(entry)
+    const what = entry.upstream === undefined ? 'remote' : 'upstream'
+    const pubHead = await lsRemoteBranch(root, source, entry.branch).catch((err: unknown) => {
       if (err instanceof GitError) {
-        this.error(`${entry.name}: cannot reach remote ${entry.remote}\n${err.stderr}`)
+        this.error(`${entry.name}: cannot reach ${what} ${source}\n${err.stderr}`)
       }
       throw err
     })
     if (pubHead === null) {
       this.error(
-        `${entry.name}: ${entry.remote} has no ${entry.branch} branch, so there is nothing to vendor.\nNothing was changed. Check the URL, or name the right branch with \`--branch <branch>\`.`,
+        `${entry.name}: ${source} has no ${entry.branch} branch, so there is nothing to vendor.\nNothing was changed. Check the URL, or name the right branch with \`--branch <branch>\`.`,
       )
     }
     return pubHead
@@ -168,8 +199,14 @@ export default class Vendor extends MonolithCommand {
     if (!reloaded) return 'the config file vanished while monolith was writing it'
     const found = reloaded.subrepos.find((s) => s.name === entry.name)
     if (!found) return `the rewritten config has no subrepo named ${entry.name}`
-    if (found.path !== entry.path || found.remote !== entry.remote || found.branch !== entry.branch) {
-      return `the rewritten config resolves ${entry.name} to ${found.path}/ tracking ${found.remote} (${found.branch}), not what monolith wrote`
+    if (
+      found.path !== entry.path ||
+      found.remote !== entry.remote ||
+      found.branch !== entry.branch ||
+      found.upstream !== entry.upstream ||
+      found.pushBranch !== entry.pushBranch
+    ) {
+      return `the rewritten config resolves ${entry.name} to ${found.path}/ tracking ${pullSource(found)} (${found.branch}), not what monolith wrote`
     }
     return null
   }

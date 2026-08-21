@@ -13,6 +13,10 @@ export interface VendorEntry {
   path: string
   remote: string
   branch: string
+  /** Set by `--fork`: `remote` is then the fork and this is where the tree comes from. */
+  upstream?: string
+  /** Branch pushed on the fork. Omitted from the rendered entry when it equals `branch`. */
+  pushBranch?: string
 }
 
 /** Names we are willing to invent for the user: one safe path segment, nothing clever. */
@@ -45,8 +49,9 @@ function quote(value: string): string {
 }
 
 /**
- * The entry to write into the config, in the same style the README documents. `name` and
- * `branch` are omitted when they equal what the loader would default to anyway.
+ * The entry to write into the config, in the same style the README documents. `name`,
+ * `branch` and `pushBranch` are omitted when they equal what the loader would default to
+ * anyway.
  */
 export function renderSubrepoEntry(entry: VendorEntry): string {
   const fields: string[] = []
@@ -54,6 +59,10 @@ export function renderSubrepoEntry(entry: VendorEntry): string {
   fields.push(`path: ${quote(entry.path)}`)
   fields.push(`remote: ${quote(entry.remote)}`)
   if (entry.branch !== 'main') fields.push(`branch: ${quote(entry.branch)}`)
+  if (entry.upstream !== undefined) fields.push(`upstream: ${quote(entry.upstream)}`)
+  if (entry.upstream !== undefined && entry.pushBranch !== undefined && entry.pushBranch !== entry.branch) {
+    fields.push(`pushBranch: ${quote(entry.pushBranch)}`)
+  }
   return `{ ${fields.join(', ')} }`
 }
 

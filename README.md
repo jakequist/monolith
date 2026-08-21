@@ -151,14 +151,61 @@ file lands silently and your patch survives. When upstream edits the same lines 
 get the standard conflict flow — markers in `vendor/lodash/`, resolve, `git add`,
 `monolith pull --continue` — and your resolution is preserved.
 
-**Pushing patches back upstream is not solved yet, and monolith does not pretend otherwise.**
-`remote` is currently both the pull source and the push destination, so a `monolith push
-lodash` after a local patch will try to write to lodash's own repository. Almost nobody has
-permission to do that, and the push fails loudly with git's own rejection before anything is
-recorded — a safe failure, but a failure. Until then, either don't push vendored subrepos, or
-point `remote` at your own fork and pull manually from upstream. The proper fix is a
-triangular setup — an `upstream` to pull from and a fork as `remote` to push PR branches to —
-tracked as the next phase in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md) (S110–S118).
+With only `remote` set it is both the pull source and the push destination, so `monolith push
+lodash` would try to write to lodash's own repository. Almost nobody has permission to do
+that. Point monolith at a fork instead — see the next section.
+
+### Pushing patches back upstream (fork workflow)
+
+Set `upstream` and the subrepo becomes triangular: monolith **pulls from upstream** and
+**pushes to your fork**, which is exactly the shape a pull request wants.
+
+```ts
+{
+  path: 'vendor/lodash',
+  remote: 'git@github.com:you/lodash.git',       // your fork — the push destination
+  upstream: 'git@github.com:lodash/lodash.git',  // where updates come from
+  branch: 'main',                                // branch tracked on upstream
+  pushBranch: 'monolith/patches',                // optional, defaults to `branch`
+}
+```
+
+`monolith vendor <upstream-url> --fork <fork-url>` writes that entry for you.
+
+The loop:
+
+```sh
+git commit -am "fix(lodash): guard against a null prototype"   # patch it in the monorepo
+monolith push lodash    # rebuilds you/lodash's monolith/patches = upstream main + your patches
+# open the PR from that branch
+monolith pull lodash    # takes upstream updates whenever you like
+```
+
+The fork's `pushBranch` is a **derived artifact** monolith owns: every push rebuilds it as the
+current upstream head plus your patches, replayed in order, and writes it with
+`--force-with-lease` so a branch somebody else moved is never clobbered silently. Exports are
+sha-deterministic, so rebuilding an unchanged chain produces the identical branch and monolith
+reports "up to date" instead of pushing. Upstream itself is **never** written to — not a
+branch, not a tag. (`monolith tag` refuses on a triangular subrepo for the same reason.)
+
+Once upstream advances, `monolith sync` imports their commits under your patches and rebuilds
+the fork branch on the new upstream head, so the PR stays applicable.
+
+When the PR is merged, everything converges by itself:
+
+- **Merged or rebased in:** your exported commits arrive in upstream carrying their
+  `Monolith-Source` trailers, so `pull` skips them, the anchors move forward, and `push` says
+  up to date.
+- **Squash-merged:** upstream gets one new commit with your tree and none of your trailers.
+  `pull` imports it (usually as an empty commit — the content is already there), and because
+  that import reproduces the upstream tip exactly, it becomes the newest export anchor and the
+  old patch commits fall out of the scan range. `push` is up to date, with nothing
+  re-published and no ping-pong.
+
+`status` measures ahead/behind against upstream, and says `N to push (awaiting upstream merge)`
+once your fork branch already carries the commits — the ball is in the maintainer's court, not
+yours. `doctor` fetches both sides and reports them separately, so an unreachable fork never
+looks like a broken upstream.
 
 Two notes on the config edit. monolith inserts the entry textually into the `subrepos: [`
 array, then **reloads your config through the real loader** and checks the new entry resolves;
@@ -190,9 +237,11 @@ export default defineConfig({
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `path` | `string` | yes | Directory inside the monorepo, relative to the config file. `packages/lib` is fine. Cannot be the repo root, cannot contain `.`/`..`, and two subrepos may not nest inside one another. |
-| `remote` | `string` | yes | Git URL of the public repository. |
+| `remote` | `string` | yes | Git URL of the public repository. With `upstream` set, this is your fork: the push destination, and the only repo monolith writes to. |
+| `upstream` | `string` | no | Git URL to pull from when it differs from the one you push to (fork workflow). Every sync decision — imports, anchors, ahead/behind — is made against it. Must differ from `remote`. |
 | `name` | `string` | no | The handle you type (`monolith push core`). Defaults to the last segment of `path`. Must be unique. |
-| `branch` | `string` | no | Branch synced on both sides. Default `main`. |
+| `branch` | `string` | no | Branch synced on both sides. Default `main`. With `upstream` set, the branch tracked on upstream. |
+| `pushBranch` | `string` | no | Branch monolith rebuilds on your fork. Defaults to `branch`. Requires `upstream`. |
 | `exclude` | `string[]` | no | [picomatch](https://github.com/micromatch/picomatch) globs, relative to the subrepo directory, matched against every file before export. Dotfiles are matched. |
 | `rewriteMessage` | function | no | Rewrite outgoing commit messages. |
 | `transform` | function | no | Mutate the outgoing tree. |
@@ -259,13 +308,13 @@ Because the scan runs against every commit being exported — not just the final
 | --- | --- |
 | `monolith init` | Write a starter `monolith.config.ts` in the current directory. Running it again is a no-op. |
 | `monolith adopt <subrepo> [--history] [--theirs]` | Connect a subrepo to a public remote that already has history. Default records the remote's HEAD tree in one commit; `--history` replays every public commit; `--theirs` resolves the "both sides have content and disagree" case in favour of the remote. Refuses if the two are already connected. |
-| `monolith vendor <git-url> [--path <p>] [--name <n>] [--branch <b>]` | Add a third-party repo as a tracked subrepo. Writes the config entry and materializes the remote's tree at `vendor/<name>/` in one commit. Refuses (changing nothing) on a name/path collision, a dirty working tree, an occupied target path, an unreachable remote, or a config it cannot safely edit — in which case it prints the entry to paste yourself. |
-| `monolith push [subrepo] [--yes] [--full-history]` | Export new monorepo commits to the public remote(s). Defaults to every configured subrepo. On a subrepo's **first** push it asks before publishing — `--yes` answers that (required when there is no terminal), and `--full-history` replays every commit that touched the directory instead of publishing one baseline commit. One subrepo refusing does not stop the others; the run exits non-zero at the end. |
-| `monolith pull [subrepo] [--continue]` | Import new public commits into the monorepo. `--continue` finishes an import that stopped on a conflict, after you resolved it and ran `git add`. |
+| `monolith vendor <git-url> [--path <p>] [--name <n>] [--branch <b>] [--fork <url>]` | Add a third-party repo as a tracked subrepo. Writes the config entry and materializes the remote's tree at `vendor/<name>/` in one commit. `--fork` sets up the triangular case: `<git-url>` becomes `upstream` (pull source) and the fork becomes `remote` (push destination). Refuses (changing nothing) on a name/path collision, a dirty working tree, an occupied target path, an unreachable remote, or a config it cannot safely edit — in which case it prints the entry to paste yourself. |
+| `monolith push [subrepo] [--yes] [--full-history]` | Export new monorepo commits to the public remote(s) — with `upstream` configured, to your fork's `pushBranch`, rebuilt on the upstream head. Defaults to every configured subrepo. On a subrepo's **first** push it asks before publishing — `--yes` answers that (required when there is no terminal), and `--full-history` replays every commit that touched the directory instead of publishing one baseline commit. One subrepo refusing does not stop the others; the run exits non-zero at the end. |
+| `monolith pull [subrepo] [--continue]` | Import new public commits into the monorepo, from `upstream` when it is set. `--continue` finishes an import that stopped on a conflict, after you resolved it and ran `git add`. |
 | `monolith sync [subrepo]` | Pull, then push — converge both sides in one command. |
 | `monolith status [subrepo] [--json]` | Per-subrepo "N to push, M to pull", or "in sync". `--json` prints a stable machine-readable object for CI. |
 | `monolith doctor [subrepo]` | Print the derived sync points and verify they match reality: broken commit mappings, rewritten history, unfinished pulls, unreachable remotes. Exits non-zero when it finds a problem. |
-| `monolith tag <subrepo> <tag>` | Create a lightweight tag on the public remote pointing at the commit that corresponds to monorepo HEAD. Refuses when anything is unpushed or unpulled (the tag would lie), or when the tag already exists. |
+| `monolith tag <subrepo> <tag>` | Create a lightweight tag on the public remote pointing at the commit that corresponds to monorepo HEAD. Refuses when anything is unpushed or unpulled (the tag would lie), when the tag already exists, or when the subrepo has an `upstream` (the tags are the upstream maintainers' to create). |
 | `monolith update [--check]` | Reinstall the CLI from the newest GitHub release, or just report installed vs. latest. |
 
 ## How it works

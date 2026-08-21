@@ -1,7 +1,23 @@
 import type {ResolvedSubrepo} from '../config.js'
-import {EMPTY_TREE, type CommitMeta, commitTree, git, gitOk, pushRef, readCommit, revList} from './git.js'
+import {
+  EMPTY_TREE,
+  type CommitMeta,
+  commitTree,
+  git,
+  gitOk,
+  pushRef,
+  pushRefWithLease,
+  readCommit,
+  revList,
+} from './git.js'
 import {filteredSubtree} from './filter.js'
-import {remoteTrackingRef, unpublishedView, type SyncView} from './sync.js'
+import {
+  forkTrackingRef,
+  loadForkState,
+  remoteTrackingRef,
+  unpublishedView,
+  type SyncView,
+} from './sync.js'
 import {ORIGIN_TRAILER, SOURCE_TRAILER, appendTrailer, getTrailer} from './trailers.js'
 
 export interface ExportCandidate {
@@ -27,6 +43,12 @@ export interface ExportResult {
   exported: ExportedCommit[]
   /** Public head after the run (unchanged when nothing was exported). */
   newHead: string | null
+  /**
+   * Did this run write to a remote? False in triangular mode when the fork branch already
+   * carries exactly these commits — the export is built, byte-identical, and simply waiting
+   * for upstream to merge it.
+   */
+  pushed: boolean
 }
 
 export interface ExportOptions {
@@ -119,19 +141,19 @@ export async function computeExports(
 }
 
 /**
- * Replay candidates onto the public branch. Every commit (and therefore every scan hook)
- * is resolved first; the remote is written exactly once, at the end. A hook that throws must
- * never leave a partially published branch behind.
+ * Turn planned exports into commit objects on top of `base`, without touching any remote.
+ *
+ * Every input is fixed — tree, message, author *and* committer are copied from the monorepo
+ * commit — so replaying the same plan on the same base always yields the same shas. That
+ * determinism is what lets triangular mode recognise a fork branch it built earlier instead
+ * of force-pushing an identical chain on every run.
  */
-export async function runExport(
+export async function buildExportChain(
   root: string,
-  subrepo: ResolvedSubrepo,
-  view: SyncView,
-  opts: ExportOptions,
-): Promise<ExportResult> {
-  const planned = await computeExports(root, subrepo, view, opts.candidates)
-
-  let tip = view.pubHead
+  planned: PlannedExport[],
+  base: string | null,
+): Promise<{exported: ExportedCommit[]; tip: string | null}> {
+  let tip = base
   const exported: ExportedCommit[] = []
   for (const p of planned) {
     const pubSha = await commitTree(root, {
@@ -148,12 +170,41 @@ export async function runExport(
     exported.push({monoSha: p.monoSha, pubSha})
     tip = pubSha
   }
+  return {exported, tip}
+}
 
-  if (exported.length === 0 || tip === null) return {exported: [], newHead: view.pubHead}
+/**
+ * Replay candidates onto the public branch. Every commit (and therefore every scan hook)
+ * is resolved first; the remote is written exactly once, at the end. A hook that throws must
+ * never leave a partially published branch behind.
+ *
+ * In triangular mode the chain is parented on the UPSTREAM head and lands on the fork's
+ * `pushBranch`: a linear, PR-ready branch that monolith owns and rebuilds. Upstream is never
+ * written to, and the upstream tracking ref is never moved to something upstream does not have.
+ */
+export async function runExport(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  view: SyncView,
+  opts: ExportOptions,
+): Promise<ExportResult> {
+  const planned = await computeExports(root, subrepo, view, opts.candidates)
+  const {exported, tip} = await buildExportChain(root, planned, view.pubHead)
+
+  if (exported.length === 0 || tip === null) return {exported: [], newHead: view.pubHead, pushed: false}
+
+  if (subrepo.upstream !== undefined) {
+    const fork = await loadForkState(root, subrepo)
+    if (fork.head === tip) return {exported, newHead: tip, pushed: false}
+    if (fork.head === null) await pushRef(root, subrepo.remote, tip, `refs/heads/${subrepo.pushBranch}`)
+    else await pushRefWithLease(root, subrepo.remote, tip, `refs/heads/${subrepo.pushBranch}`, fork.head)
+    await git(root, ['update-ref', forkTrackingRef(subrepo.name), tip])
+    return {exported, newHead: tip, pushed: true}
+  }
 
   await pushRef(root, subrepo.remote, tip, `refs/heads/${subrepo.branch}`)
   await git(root, ['update-ref', view.trackingRef, tip])
-  return {exported, newHead: tip}
+  return {exported, newHead: tip, pushed: true}
 }
 
 /**

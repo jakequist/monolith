@@ -5,7 +5,7 @@ import {applyTreeInto, commitAdopt, differingPaths} from '../core/adopt.js'
 import {filteredSubtree, hasCommittedFiles} from '../core/filter.js'
 import {EMPTY_TREE, git, revParse} from '../core/git.js'
 import {checkImportPreconditions, readSequencer, runImport} from '../core/importer.js'
-import type {SyncView} from '../core/sync.js'
+import {pullSource, type SyncView} from '../core/sync.js'
 import {
   loadView,
   nothingExistsYet,
@@ -63,7 +63,7 @@ export default class Adopt extends MonolithCommand {
       : await this.adoptIntoEmptyPath(root, subrepo, view, pubHead, r, flags)
 
     this.log(
-      `✓ ${subrepo.name}: adopted ${subrepo.remote} (${subrepo.branch}) at ${pubHead.slice(0, 10)} — ${count} commit(s)`,
+      `✓ ${subrepo.name}: adopted ${pullSource(subrepo)} (${subrepo.branch}) at ${pubHead.slice(0, 10)} — ${count} commit(s)`,
     )
     this.log(`  ${subrepo.path}/ and the remote are now in sync; push and pull as usual.`)
   }
@@ -78,13 +78,13 @@ export default class Adopt extends MonolithCommand {
       const head = await revParse(root, 'HEAD')
       if (!head || !(await hasCommittedFiles(root, head, subrepo))) this.error(nothingExistsYet(subrepo))
       this.error(
-        `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch, so there is nothing to adopt.
+        `${subrepo.name}: ${pullSource(subrepo)} has no ${subrepo.branch} branch, so there is nothing to adopt.
 Run \`monolith push ${subrepo.name} --yes\` to publish ${subrepo.path}/ instead.`,
       )
     }
     if (view.related) {
       this.error(
-        `${subrepo.name}: already connected to ${subrepo.remote} — monolith trailers already link the two repositories, so there is nothing to adopt.
+        `${subrepo.name}: already connected to ${pullSource(subrepo)} — monolith trailers already link the two repositories, so there is nothing to adopt.
 Nothing was changed. Run \`monolith pull ${subrepo.name}\` to import new public commits, \`monolith push ${subrepo.name}\` to export new monorepo commits, or \`monolith sync ${subrepo.name}\` for both.`,
       )
     }
@@ -137,7 +137,7 @@ Nothing was changed. Run \`monolith adopt ${subrepo.name}\` (add --theirs if the
     if (monoTree !== pubTree && !flags.theirs) {
       const paths = await differingPaths(root, monoTree, pubTree)
       this.error(
-        `${subrepo.name}: ${subrepo.path}/ and ${subrepo.remote} (${subrepo.branch}) both have content, and their trees differ:
+        `${subrepo.name}: ${subrepo.path}/ and ${pullSource(subrepo)} (${subrepo.branch}) both have content, and their trees differ:
 ${paths.map((p) => `  ${p}`).join('\n')}
 Nothing was changed. Either make the two trees match and run \`monolith adopt ${subrepo.name}\` again, or take the public tree wholesale:
   monolith adopt ${subrepo.name} --theirs`,
