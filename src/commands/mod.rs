@@ -1,4 +1,5 @@
 pub mod attach;
+pub mod completion;
 pub mod detach;
 pub mod doctor;
 pub mod init;
