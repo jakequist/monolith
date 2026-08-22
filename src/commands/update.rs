@@ -330,10 +330,12 @@ mod tests {
             target.starts_with(std::env::consts::ARCH),
             "triple must start with the arch: {target}"
         );
-        assert_eq!(
-            target.split('-').count(),
-            4,
-            "a target triple has four dash-separated parts: {target}"
+        // Linux triples have four dash-separated parts (x86_64-unknown-linux-musl),
+        // Apple ones have three (aarch64-apple-darwin).
+        let parts = target.split('-').count();
+        assert!(
+            (3..=4).contains(&parts),
+            "a target triple has three or four dash-separated parts: {target}"
         );
     }
 
