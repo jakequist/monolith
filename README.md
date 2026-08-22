@@ -1,6 +1,6 @@
 # Monosplice 
 
-### git submodules for mere mortals
+### git subtree for mere mortals
 
 Monorepos are awesome.  Everything is synchronized and references each other in lock step.  But the world is harsh towards monorepos.  Sometimes we need to open source a package... other times we need to import a 3rd party vendor.   Monorepos break under these conditions.  
 
@@ -58,6 +58,9 @@ TypeScript configs (`monosplice.config.ts`) work too — see
 $ monosplice attach ./core git@github.com:acme/core.git
 ```
 
+That's it. `core/` is now the root of a real repo, and your monorepo didn't even notice.
+(`--yes` answers the publish prompt in scripts; `--export-history` replays every commit
+that ever touched `core/` instead of one baseline commit.)
 
 ### I have a monorepo and want to import an external repo
 
@@ -84,7 +87,8 @@ can't push to, see the [fork workflow](docs/reference.md#pushing-patches-back-up
 
 ### Then just work
 
-Whatever you attached, daily life is ordinary git plus one verb:
+Whatever you attached, daily life is ordinary git plus one verb. No new mental model, no
+ceremony to teach your team:
 
 ```sh
 git commit -am "feat(core): add the greeter"
@@ -124,6 +128,8 @@ Full flags and edge-case behaviour: [docs/reference.md](docs/reference.md).
 
 ## How it works
 
+No magic, no daemon, no lock-in — just unusually disciplined bookkeeping.
+
 **Two histories, one mapping.** The monorepo and each standalone repo have independent
 histories; monosplice replays commits between them and records the correspondence in commit
 trailers (the `Key: value` lines git keeps at the end of a commit message) — exports carry
@@ -151,11 +157,13 @@ the push. See [configuration & hooks](docs/reference.md#configuration).
 
 **Conflicts are just merges.** Imports apply with `git apply --3way`, so concurrent edits to
 different lines merge silently. A real conflict leaves standard markers; you resolve,
-`git add`, `monosplice pull --continue` — or `monosplice pull --abort` to put the monorepo
-back exactly as it was. A resolution you keep is re-exported, so neither side loses it.
+`git add`, `monosplice pull --continue` — or `monosplice pull --abort` to pretend the whole
+thing never happened. A resolution you keep is re-exported, so neither side loses it.
 Details: [the conflict flow](docs/reference.md#the-conflict-flow).
 
 ## Compared to the alternatives
+
+Yes, we know about all of these. Here's the honest scorecard:
 
 | | git submodule | git subtree | git-subrepo | josh | Copybara | monosplice |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -182,7 +190,7 @@ you can read in ten seconds.
 
 ## Limitations
 
-The honest list, current as of v0.x:
+Things monosplice won't do, listed here so you don't find out the hard way:
 
 - **One branch per subrepo.** monosplice syncs the configured branch (default `main`) and
   nothing else; feature-branch export is on the roadmap.
@@ -196,7 +204,8 @@ The honest list, current as of v0.x:
 - **`status` talks to the network by default.** Re-deriving state is a couple of `git log`
   scans per subrepo — cheap. Fetching each remote is what you actually wait on;
   `monosplice status --offline` skips it and measures against the last fetch instead.
-- **Node ≥ 20 runtime.** This is a TypeScript CLI, not a git subcommand.
+- **Node ≥ 20 runtime.** This is a TypeScript CLI, not a git subcommand. We've made our
+  peace with it; standalone binaries are on the roadmap if you can't.
 
 ## Going deeper
 
