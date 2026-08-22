@@ -44,7 +44,7 @@ $ monosplice attach core git@github.com:acme/core.git
 # acme/core.git (main) is empty. Publish core's current tree as its first public commit? [y/N]
 ```
 
-`core/`'s contents become the root of `myorg/core` in one baseline commit (`--yes` in
+`core/`'s contents become the root of `acme/core` in one baseline commit (`--yes` in
 scripts; `--full-history` replays every commit that ever touched `core/` instead).
 
 ### I have a monorepo and want to import an external repo
