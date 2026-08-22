@@ -1,6 +1,6 @@
 # Monosplice 
 
-### git subtree for mere mortals
+### git subrepos for mere mortals
 
 Monorepos are awesome.  Everything is synchronized and references each other in lock step.  But the world is harsh towards monorepos.  Sometimes we need to open source a package... other times we need to import a 3rd party vendor.   Monorepos break under these conditions.  
 
