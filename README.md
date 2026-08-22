@@ -1,4 +1,16 @@
-# Monosplice - What git subtree should have been
+# Monosplice 
+
+### git submodules for mere mortals
+
+Monorepos are awesome.  Everything is synchronized and references each other in lock step.  But the world is harsh towards monorepos.  Sometimes we need to open source a package... other times we need to import a 3rd party vendor.   Monorepos break under these conditions.  
+
+In the beginning, there were `git submodules`.  It was better than nothing, but oh so painful to use. 
+
+Then came `git subtree`, which was better, but still too complicated to really use day-to-day.
+
+Now, I give you `monosplice`.  A CLI that makes it easy'ish to push & pull subrepos from your monorepo. 
+
+---
 
 Keep everything in one monorepo, and splice any directory out as a real, standalone git
 repo. `push` exports your commits to it; `pull` replays outside contributions back in —
