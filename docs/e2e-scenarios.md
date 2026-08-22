@@ -4,6 +4,11 @@ Living TDD backlog. Each scenario becomes a black-box test in `test/e2e/` that d
 built CLI against throwaway git repos (local bare repos as "public" remotes). Check items
 off as their tests land. IDs are stable — reference them in commits and test names.
 
+Since the Rust rewrite these S-numbers live in `tests/e2e_*.rs` (Rust, black-box over
+`CARGO_BIN_EXE_monosplice`), not `test/e2e/`; config examples in older scenarios below —
+`monosplice.config.ts`, `pushBranch`, function hooks — read as their `monosplice.toml`
+equivalents (`push-branch`, shell-command hooks; see docs/reference.md).
+
 Conventions: **mono** = the private monorepo, **pub** = the public bare remote for a
 subrepo, `core/` = the configured subrepo path.
 

@@ -29,14 +29,38 @@ fork — monosplice keeps a PR branch rebased on upstream for you.
 
 ## Install
 
+One static binary, no runtime, no Node:
+
+```sh
+curl -fsSL https://github.com/jakequist/monosplice/releases/latest/download/install.sh | sh
+```
+
+The script detects your platform, downloads the matching release tarball, and drops the
+binary in `/usr/local/bin` (or `~/.local/bin` if it can't write there). If you'd rather
+build it yourself:
+
+```sh
+cargo install monosplice
+```
+
+npm still works, for the muscle memory and for `package.json`-shaped CI — it is now a shim
+that downloads the same binary:
+
 ```sh
 npm install -g monosplice
 ```
 
-Requires Node ≥ 20 and git ≥ 2.30. Prefer an install script or a pinned tarball? See
-[install options](docs/reference.md#install-options).
+Or take the tarball straight from
+[Releases](https://github.com/jakequist/monosplice/releases) and unpack `monosplice`
+wherever you like — the assets are named `monosplice-<version>-<target>.tar.gz`, one per
+target triple. Full menu: [install options](docs/reference.md#install-options).
 
-Shell completion: `monosplice autocomplete` prints the one-time setup for bash or zsh.
+The only requirement is a system `git` (≥ 2.30) on your PATH. Once installed,
+`monosplice update` replaces the binary in place with the latest release, and
+`monosplice update --check` just tells you whether one is waiting.
+
+Shell completion: `monosplice completion bash` (or `zsh`, `fish`) prints a script to
+source.
 
 ## Quickstart
 
@@ -45,10 +69,10 @@ One-time setup, then pick the scenario that matches yours. All three use one com
 
 ```sh
 cd ~/code/my-monorepo
-monosplice init          # writes monosplice.config.js
+monosplice init          # writes monosplice.toml
 ```
 
-TypeScript configs (`monosplice.config.ts`) work too — see
+The scaffold is a commented-out `[[subrepos]]` block; `attach` fills it in for you — see
 [configuration](docs/reference.md#configuration).
 
 ### I have a monorepo and want to extract a subrepo
@@ -112,7 +136,7 @@ workflow — it's all in [configuration & hooks](docs/reference.md#configuration
 
 | Command | What it does |
 | --- | --- |
-| `monosplice init` | Write a starter `monosplice.config.js`. |
+| `monosplice init` | Write a starter `monosplice.toml`. |
 | `monosplice push [subrepo]` | Export new monorepo commits to the standalone repo(s). `--dry-run` lists them and writes nothing. |
 | `monosplice pull [subrepo]` | Import new standalone-repo commits into the monorepo. `--dry-run` previews, `--continue` resumes after a conflict, `--abort` throws it away. |
 | `monosplice sync [subrepo]` | Pull, then push — converge both sides. `--continue` finishes a sync that stopped on a conflict. |
@@ -121,8 +145,8 @@ workflow — it's all in [configuration & hooks](docs/reference.md#configuration
 | `monosplice detach <subrepo>` | Stop tracking a subrepo: removes the config entry, keeps the folder and all of its history. |
 | `monosplice doctor [--json]` | Verify the derived sync state against reality; non-zero exit on problems. |
 | `monosplice tag <subrepo> <tag>` | Tag the standalone repo at the commit matching monorepo HEAD. |
-| `monosplice autocomplete` | Print the one-time bash/zsh completion setup. |
-| `monosplice update` | Self-update from npm. |
+| `monosplice completion <shell>` | Print a completion script for bash, zsh or fish. |
+| `monosplice update` | Replace the installed binary with the latest release (`--check` only reports). |
 
 Full flags and edge-case behaviour: [docs/reference.md](docs/reference.md).
 
@@ -150,8 +174,8 @@ lockfile to conflict on. And when the picture doesn't add up (shallow clone, rew
 history), monosplice stops and says so rather than guessing.
 
 **Hooks run before anything leaves.** `exclude` globs filter files out of the export, and
-three per-commit TypeScript hooks — `scan`, `transform`, `rewriteMessage` — inspect or
-rewrite each outgoing tree; throwing aborts the whole push with nothing published. A secret
+three per-commit shell hooks — `scan`, `transform`, `rewrite-message` — inspect or rewrite
+each outgoing tree; a non-zero exit aborts the whole push with nothing published. A secret
 scan runs against *every* exported commit, so a key that was added and deleted still blocks
 the push. See [configuration & hooks](docs/reference.md#configuration).
 
@@ -160,6 +184,40 @@ different lines merge silently. A real conflict leaves standard markers; you res
 `git add`, `monosplice pull --continue` — or `monosplice pull --abort` to pretend the whole
 thing never happened. A resolution you keep is re-exported, so neither side loses it.
 Details: [the conflict flow](docs/reference.md#the-conflict-flow).
+
+## Configuration
+
+`monosplice.toml` at the root of your monorepo, one `[[subrepos]]` block per spliced
+directory:
+
+```toml
+[[subrepos]]
+path = "core"                                # directory in the monorepo
+remote = "git@github.com:you/core.git"       # the standalone repo
+branch = "main"                              # optional, default "main"
+exclude = ["INTERNAL.md", "**/*.internal.ts"]  # optional globs, relative to core/
+
+[[subrepos]]
+path = "vendor/lodash"
+remote = "git@github.com:you/lodash.git"     # your fork — the push destination
+upstream = "git@github.com:lodash/lodash.git"  # where updates come from
+push-branch = "monosplice/patches"           # the PR branch monosplice rebuilds
+```
+
+Hooks are shell commands. `scan` runs in the outgoing tree, and a non-zero exit stops the
+push before a single byte reaches the remote:
+
+```toml
+[[subrepos]]
+path = "core"
+remote = "git@github.com:you/core.git"
+scan = "if grep -rIqE 'AKIA[0-9A-Z]{16}' .; then echo 'AWS key in the outgoing tree' >&2; exit 1; fi"
+```
+
+Every key, and the exact contract the hooks run under, is in
+[configuration & hooks](docs/reference.md#configuration). Coming from a
+`monosplice.config.ts`? [Migrating from monosplice.config.ts/js](docs/reference.md#migrating-from-monospliceconfigtsjs)
+maps it key by key.
 
 ## Compared to the alternatives
 
@@ -171,9 +229,9 @@ Yes, we know about all of these. Here's the honest scorecard:
 | Contributor setup | `submodule update --init`, forever | none | none | none |
 | Export granularity | n/a (same repo) | squash or graft | squashed per push | per commit |
 | Contributions back in | manual, by hand | `subtree pull` (merge noise) | `subrepo pull` (squash) | yes, `monosplice pull` with 3-way merge |
-| Secret scan / tree transform | no | no | no | yes (TypeScript hooks) |
+| Secret scan / tree transform | no | no | no | yes (shell hooks) |
 | Where the mapping lives | gitlink shas | subtree merge commit messages | `.gitrepo` file committed in your tree | commit trailers, re-derived every run |
-| Runtime | git | git | bash | Node ≥ 20 |
+| Runtime | git | git | bash | one static binary + git |
 | Scope | vendoring dependencies | grafting a directory in/out | one dir ↔ one repo | one monorepo publishing a handful of directories |
 
 Short version: submodules make the *contributor* pay for your publishing strategy.
@@ -196,7 +254,7 @@ Things monosplice won't do, listed here so you don't find out the hard way:
   nothing else; feature-branch export is on the roadmap.
 - **Exported commits are watermarked.** Every export carries a
   `Monosplice-Source: <monorepo-sha>` trailer. That trailer *is* the sync mapping, so
-  `rewriteMessage` runs before it is appended and cannot strip it — private-monorepo SHAs
+  `rewrite-message` runs before it is appended and cannot strip it — private-monorepo SHAs
   appear in standalone-repo history, permanently. They reveal nothing but 40 hex characters,
   but know it's there before you publish.
 - **No shallow clones.** Sync state is re-derived by walking history, so a shallow monorepo
@@ -204,8 +262,9 @@ Things monosplice won't do, listed here so you don't find out the hard way:
 - **`status` talks to the network by default.** Re-deriving state is a couple of `git log`
   scans per subrepo — cheap. Fetching each remote is what you actually wait on;
   `monosplice status --offline` skips it and measures against the last fetch instead.
-- **Node ≥ 20 runtime.** This is a TypeScript CLI, not a git subcommand. We've made our
-  peace with it; standalone binaries are on the roadmap if you can't.
+- **Hooks are shell commands, and they want a POSIX shell.** They run via `sh -c`, so the
+  hook you write is the hook that runs — but a JavaScript function in a config file is no
+  longer a thing monosplice can execute. Call your script from the shell command instead.
 
 ## Going deeper
 
@@ -213,25 +272,24 @@ Things monosplice won't do, listed here so you don't find out the hard way:
 - [Vendoring a third-party project](docs/reference.md#vendoring-a-third-party-project)
 - [Fork workflow — PRs back upstream](docs/reference.md#pushing-patches-back-upstream-fork-workflow)
 - [Configuration & hooks](docs/reference.md#configuration)
+- [Migrating from monosplice.config.ts/js](docs/reference.md#migrating-from-monospliceconfigtsjs)
 - [The conflict flow](docs/reference.md#the-conflict-flow)
 - [Install options & releasing](docs/reference.md#install-options)
 
 ## Development
 
 ```sh
-pnpm install
-pnpm build          # tsc → dist/
-pnpm typecheck      # tsc --noEmit
-pnpm test           # unit tests only (fast)
-pnpm test:e2e       # build, then the black-box CLI suite
-pnpm test:all       # build, then everything
+cargo build           # debug binary at target/debug/monosplice
+cargo test            # unit tests (in-module) + the black-box e2e suite
+cargo clippy -- -D warnings
+cargo fmt
 ```
 
 The project is test-driven: new behaviour starts as a scenario in
 [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md), gets a failing black-box test in
-`test/e2e/` (or a unit test in `test/unit/` for pure logic), then the implementation. E2E
-tests invoke the built binary and assert on exit codes, stdout and git state; "remotes" are
-local bare repos, so the suite never touches the network. Releasing is
+`tests/e2e_*.rs` (or a unit test beside the code it covers for pure logic), then the
+implementation. E2E tests invoke the built binary and assert on exit codes, stdout and git
+state; "remotes" are local bare repos, so the suite never touches the network. Releasing is
 [tag-driven](docs/reference.md#releasing).
 
 ## Roadmap
@@ -240,7 +298,6 @@ Not built yet, in rough order of usefulness:
 
 - **Branch export** — sync branches other than the configured one, so feature branches and release branches can be published too.
 - **A GitHub Action** — run `monosplice sync` (or at least `monosplice status`) in CI on a schedule.
-- **Standalone binaries** — `oclif pack` tarballs so the CLI can be installed without a Node toolchain.
 
 ## License
 
