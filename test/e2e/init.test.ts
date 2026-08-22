@@ -4,20 +4,20 @@ import path from 'node:path'
 import {makeRepo, runMonosplice, sandbox} from './harness.js'
 
 describe('S01: init', () => {
-  it('scaffolds monosplice.config.ts and is a safe no-op when re-run', async () => {
+  it('scaffolds monosplice.config.js and is a safe no-op when re-run', async () => {
     const root = sandbox()
     const mono = await makeRepo(root, 'mono')
 
     const first = await runMonosplice(mono.dir, ['init'])
     expect(first.exitCode).toBe(0)
-    expect(mono.exists('monosplice.config.ts')).toBe(true)
-    expect(mono.read('monosplice.config.ts')).toContain('subrepos')
+    expect(mono.exists('monosplice.config.js')).toBe(true)
+    expect(mono.read('monosplice.config.js')).toContain('subrepos')
 
-    const before = mono.read('monosplice.config.ts')
+    const before = mono.read('monosplice.config.js')
     const second = await runMonosplice(mono.dir, ['init'])
     expect(second.exitCode).toBe(0)
     expect(second.stdout).toMatch(/already initialized/i)
-    expect(mono.read('monosplice.config.ts')).toBe(before)
+    expect(mono.read('monosplice.config.js')).toBe(before)
   })
 
   it('refuses to init outside a git repository', async () => {
@@ -28,6 +28,6 @@ describe('S01: init', () => {
     const res = await runMonosplice(dir, ['init'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toMatch(/git repository/i)
-    expect(fs.existsSync(path.join(dir, 'monosplice.config.ts'))).toBe(false)
+    expect(fs.existsSync(path.join(dir, 'monosplice.config.js'))).toBe(false)
   })
 })

@@ -97,6 +97,25 @@ export async function revList(cwd: string, args: string[]): Promise<string[]> {
   return out === '' ? [] : out.split('\n')
 }
 
+/**
+ * Subject line per commit, in one process regardless of how many were asked for (`--stdin`,
+ * because a pending list can be thousands long). Order is the caller's: the map is keyed by
+ * sha precisely so it does not depend on git's own sort.
+ */
+export async function commitSubjects(cwd: string, shas: readonly string[]): Promise<Map<string, string>> {
+  const subjects = new Map<string, string>()
+  if (shas.length === 0) return subjects
+  const out = await git(cwd, ['log', '--no-walk', '--format=%H%x00%s', '--stdin'], {
+    input: shas.map((sha) => `${sha}\n`).join(''),
+  })
+  if (out === '') return subjects
+  for (const line of out.split('\n')) {
+    const [sha, subject] = line.split('\0')
+    if (sha) subjects.set(sha, subject ?? '')
+  }
+  return subjects
+}
+
 export async function revParse(cwd: string, ref: string): Promise<string | null> {
   try {
     return await git(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])

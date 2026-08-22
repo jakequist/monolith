@@ -1,7 +1,15 @@
 import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
 import {MonospliceCommand} from '../lib/base.js'
-import {RESOLVE_OR_ABORT, importSubrepo, pullInProgressMessage, reportImportFailure} from '../lib/ops.js'
+import {
+  DRY_RUN_NOTE,
+  NO_PULL_IN_PROGRESS,
+  RESOLVE_OR_ABORT,
+  importSubrepo,
+  planPullDryRun,
+  pullInProgressMessage,
+  reportImportFailure,
+} from '../lib/ops.js'
 import {
   type AbortResult,
   type PullSequencer,
@@ -27,11 +35,17 @@ export default class Pull extends MonospliceCommand {
       description: 'Abandon an import that stopped on a conflict, restoring the pre-pull state',
       default: false,
     }),
+    'dry-run': Flags.boolean({
+      description:
+        'List the commits a pull would import and write nothing — no commit, no working-tree or index change',
+      default: false,
+    }),
   }
 
   static examples = [
     '<%= config.bin %> <%= command.id %>',
     '<%= config.bin %> <%= command.id %> core',
+    '<%= config.bin %> <%= command.id %> --dry-run',
     '<%= config.bin %> <%= command.id %> --continue',
     '<%= config.bin %> <%= command.id %> --abort',
   ]
@@ -48,17 +62,28 @@ export default class Pull extends MonospliceCommand {
       )
     }
 
+    if (flags['dry-run'] && (flags.abort || flags.continue)) {
+      const other = flags.abort ? '--abort' : '--continue'
+      this.error(
+        `--dry-run only previews a fresh pull, so it cannot be combined with ${other}.\nNothing was changed. Run \`monosplice pull --dry-run\` on its own, or \`monosplice pull ${other}\` to act on the interrupted import.`,
+      )
+    }
+
+    if (flags['dry-run']) {
+      if (state) this.error(pullInProgressMessage(state))
+      await this.eachSubrepo(this.selectSubrepos(project, args.subrepo), (subrepo) =>
+        this.previewOne(root, subrepo),
+      )
+      return
+    }
+
     if (flags.abort) {
       await this.abort(root, project.subrepos, state)
       return
     }
 
     if (flags.continue) {
-      if (!state) {
-        this.error(
-          'No pull is in progress — nothing to continue.\nRun `monosplice pull` to import new standalone-repo commits.',
-        )
-      }
+      if (!state) this.error(NO_PULL_IN_PROGRESS)
       const interrupted = project.subrepos.find((s) => s.name === state.subrepo)
       if (!interrupted) this.missingEntry(state)
       const rest = this.selectSubrepos(project, args.subrepo).filter((s) => s.name !== state.subrepo)
@@ -130,6 +155,17 @@ Nothing was changed. Restore the entry in your config, or run \`monosplice pull 
     }).catch((err: unknown) => reportImportFailure(subrepo, err, reporter))
 
     this.report(subrepo, result.imported.length)
+  }
+
+  /** Report what would be imported and stop. Every call below this line is a read. */
+  private async previewOne(root: string, subrepo: ResolvedSubrepo): Promise<void> {
+    const plan = await planPullDryRun(root, subrepo, this.collectingReporter())
+    if (plan.commits.length === 0) {
+      this.log(`${subrepo.name}: up to date (${DRY_RUN_NOTE})`)
+      return
+    }
+    this.log(`${subrepo.name}: ${plan.commits.length} to pull (${DRY_RUN_NOTE})`)
+    for (const c of plan.commits) this.log(`  ${c.sha.slice(0, 10)} ${c.subject}`)
   }
 
   private async pullOne(root: string, subrepo: ResolvedSubrepo): Promise<void> {

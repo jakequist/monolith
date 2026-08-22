@@ -3,7 +3,7 @@ import type {ResolvedSubrepo} from '../config.js'
 import {MonospliceCommand} from '../lib/base.js'
 import {buildExportChain, computeExports, planExport} from '../core/exporter.js'
 import {readSequencer} from '../core/importer.js'
-import {tryLoadForkState} from '../core/sync.js'
+import {NoFetchYetError, tryLoadForkState, type SyncView, type SyncViewOptions} from '../core/sync.js'
 import {NO_SUBREPOS_CONFIGURED, loadView} from '../lib/ops.js'
 
 /**
@@ -28,13 +28,15 @@ export interface SubrepoStatus {
 
 /**
  * Human-only annotations. They are deliberately not part of `SubrepoStatus`: the `--json`
- * key set is a contract (S85), and triangular mode must not change it.
+ * row key set is a contract (S85), and neither triangular mode nor `--offline` may change it.
  */
-interface ForkNote {
+interface Note {
   /** The fork branch already carries every pending commit — we are waiting on upstream. */
   awaitingUpstream: boolean
   /** Set when the fork could not be reached; the counts are still upstream-accurate. */
   unreachable?: string
+  /** `--offline` and this subrepo has never been fetched, so there is nothing to measure. */
+  noFetchYet?: boolean
 }
 
 export default class Status extends MonospliceCommand {
@@ -50,6 +52,11 @@ export default class Status extends MonospliceCommand {
       description: 'Exit 1 unless every subrepo is fully in sync (for CI); the report itself is unchanged',
       default: false,
     }),
+    offline: Flags.boolean({
+      description:
+        'Fetch nothing: measure against the remote-tracking refs the last run left behind. A subrepo that has never been fetched is reported as such rather than guessed at.',
+      default: false,
+    }),
   }
 
   static examples = [
@@ -57,6 +64,7 @@ export default class Status extends MonospliceCommand {
     '<%= config.bin %> <%= command.id %> core',
     '<%= config.bin %> <%= command.id %> --json',
     '<%= config.bin %> <%= command.id %> --check',
+    '<%= config.bin %> <%= command.id %> --offline',
   ]
 
   async run(): Promise<void> {
@@ -64,16 +72,22 @@ export default class Status extends MonospliceCommand {
     const project = await this.requireProject()
     const state = await readSequencer(project.root)
 
+    // Once per run, on stderr: the counts below are as fresh as the last fetch and no fresher,
+    // and stdout stays pipeable (S156).
+    if (flags.offline) this.logToStderr('offline: using last-fetched state')
+
     const selected = this.selectSubrepos(project, args.subrepo)
     const rows: SubrepoStatus[] = []
-    const notes = new Map<string, ForkNote>()
+    const notes = new Map<string, Note>()
     for (const subrepo of selected) {
-      const {row, note} = await this.inspect(project.root, subrepo, state?.subrepo === subrepo.name)
+      const {row, note} = await this.inspect(project.root, subrepo, state?.subrepo === subrepo.name, {
+        offline: flags.offline,
+      })
       rows.push(row)
       if (note) notes.set(row.name, note)
     }
 
-    if (flags.json) this.log(JSON.stringify({subrepos: rows}))
+    if (flags.json) this.log(JSON.stringify({...(flags.offline ? {offline: true} : {}), subrepos: rows}))
     else if (selected.length === 0) this.log(NO_SUBREPOS_CONFIGURED)
     else for (const row of rows) this.describe(row, notes.get(row.name))
 
@@ -84,7 +98,7 @@ export default class Status extends MonospliceCommand {
    * The `--check` contract: exit 1 unless everything is converged and every remote answered.
    * The report above is untouched — a machine reads the exit code, a human reads the lines.
    */
-  private check(rows: SubrepoStatus[], notes: Map<string, ForkNote>): void {
+  private check(rows: SubrepoStatus[], notes: Map<string, Note>): void {
     const unreachable = [...notes].filter(([, n]) => n.unreachable).map(([name]) => name)
     const failing = [...new Set([...rows.filter((r) => !r.inSync).map((r) => r.name), ...unreachable])]
     if (failing.length === 0) return
@@ -98,7 +112,8 @@ export default class Status extends MonospliceCommand {
     root: string,
     subrepo: ResolvedSubrepo,
     pullInProgress: boolean,
-  ): Promise<{row: SubrepoStatus; note?: ForkNote}> {
+    opts: SyncViewOptions,
+  ): Promise<{row: SubrepoStatus; note?: Note}> {
     const base = {
       name: subrepo.name,
       path: subrepo.path,
@@ -106,22 +121,31 @@ export default class Status extends MonospliceCommand {
       branch: subrepo.branch,
       pullInProgress,
     }
+    const unmeasured = {...base, seeded: false, ahead: null, behind: null, inSync: false}
 
-    const view = await loadView(root, subrepo, this.reporter())
-    if (view.pubHead === null) {
-      return {row: {...base, seeded: false, ahead: null, behind: null, inSync: false}}
+    let view: SyncView
+    try {
+      view = await loadView(root, subrepo, this.reporter(), opts)
+    } catch (err) {
+      // Offline with no tracking ref: "never fetched" and "no branch on the remote" look the
+      // same from here, so report the gap instead of picking one.
+      if (err instanceof NoFetchYetError) {
+        return {row: unmeasured, note: {awaitingUpstream: false, noFetchYet: true}}
+      }
+      throw err
     }
+    if (view.pubHead === null) return {row: unmeasured}
 
     const {candidates} = await planExport(root, subrepo, view)
     // Candidates over-report: tree-equality drops pure imports and excluded-only commits.
     // A throwing hook is a push-time failure, not a reason for status to blow up.
     let ahead = candidates.length
     let hookError: string | undefined
-    let note: ForkNote | undefined
+    let note: Note | undefined
     try {
       const planned = await computeExports(root, subrepo, view, candidates)
       ahead = planned.length
-      if (subrepo.upstream !== undefined) note = await this.inspectFork(root, subrepo, view.pubHead, planned)
+      if (subrepo.upstream !== undefined) note = await this.inspectFork(root, subrepo, view.pubHead, planned, opts)
     } catch (err) {
       hookError = (err as Error).message
     }
@@ -150,16 +174,19 @@ export default class Status extends MonospliceCommand {
     subrepo: ResolvedSubrepo,
     pubHead: string,
     planned: Awaited<ReturnType<typeof computeExports>>,
-  ): Promise<ForkNote> {
-    const {state, error} = await tryLoadForkState(root, subrepo)
+    opts: SyncViewOptions,
+  ): Promise<Note> {
+    const {state, error} = await tryLoadForkState(root, subrepo, opts)
     if (error) return {awaitingUpstream: false, unreachable: error.stderr.trim() || error.message}
     if (planned.length === 0 || !state?.head) return {awaitingUpstream: false}
     const {tip} = await buildExportChain(root, planned, pubHead)
     return {awaitingUpstream: tip === state.head}
   }
 
-  private describe(row: SubrepoStatus, note?: ForkNote): void {
-    if (!row.seeded) {
+  private describe(row: SubrepoStatus, note?: Note): void {
+    if (note?.noFetchYet) {
+      this.log(`${row.name}: no fetch yet — run without --offline first`)
+    } else if (!row.seeded) {
       this.log(`${row.name}: not published yet (run \`monosplice push ${row.name} --yes\`)`)
     } else if (row.inSync) {
       this.log(`${row.name}: in sync`)

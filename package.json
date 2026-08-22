@@ -2,7 +2,15 @@
   "name": "monosplice",
   "version": "0.3.1",
   "description": "Ergonomic bidirectional sync between a monorepo and the standalone repos it splices out. Submodule accuracy without submodule pain.",
-  "keywords": ["git", "monorepo", "subtree", "submodule", "open-source", "sync", "copybara"],
+  "keywords": [
+    "git",
+    "monorepo",
+    "subtree",
+    "submodule",
+    "open-source",
+    "sync",
+    "copybara"
+  ],
   "license": "MIT",
   "author": "Jake Quist",
   "repository": {
@@ -13,7 +21,11 @@
   "bin": {
     "monosplice": "./bin/run.js"
   },
-  "files": ["bin", "dist", "oclif.manifest.json"],
+  "files": [
+    "bin",
+    "dist",
+    "oclif.manifest.json"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -29,10 +41,12 @@
     "bin": "monosplice",
     "dirname": "monosplice",
     "commands": "./dist/commands",
-    "topicSeparator": " "
+    "topicSeparator": " ",
+    "plugins": ["@oclif/plugin-autocomplete"]
   },
   "dependencies": {
     "@oclif/core": "^4",
+    "@oclif/plugin-autocomplete": "^3.2.56",
     "execa": "^9",
     "jiti": "^2",
     "picomatch": "^4",

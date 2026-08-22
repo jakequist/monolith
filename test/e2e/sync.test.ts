@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest'
-import {TestRepo, cloneRemote, runMonosplice, standardFixture} from './harness.js'
+import {TestRepo, cloneRemote, multiFixture, runMonosplice, standardFixture} from './harness.js'
 
 const EXT_AUTHOR = {authorName: 'Ext Contributor', authorEmail: 'ext@example.test'}
 
@@ -217,5 +217,56 @@ describe('S43: interleaved history over several rounds', () => {
     expect(settle.stdout).toMatch(/up to date/)
     expect(await mono.head()).toBe(monoHead)
     expect(await pub.head()).toBe(pubHead)
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// S164: sync --continue
+// ---------------------------------------------------------------------------------------
+
+describe('S164: sync --continue', () => {
+  it('finishes the interrupted pull and then pushes every subrepo', async () => {
+    const {root, mono, corePubDir, libPubDir, corePub, libPub} = await multiFixture()
+    expect((await runMonosplice(mono.dir, ['push', '--yes'])).exitCode).toBe(0)
+
+    // core conflicts; lib has work waiting on both sides that the halted run never reached.
+    const coreExt = await cloneRemote(root, corePubDir, 'core-ext')
+    await coreExt.commit('docs: ext wording', {'README.md': '# core\n\next wording\n'}, EXT_AUTHOR)
+    await coreExt.git(['push', 'origin', 'main'])
+    const libExt = await cloneRemote(root, libPubDir, 'lib-ext')
+    await libExt.commit('external: lib drive-by', {'drive.txt': 'd\n'}, EXT_AUTHOR)
+    await libExt.git(['push', 'origin', 'main'])
+
+    await mono.commit('docs: mono wording', {'core/README.md': '# core\n\nmono wording\n'})
+    await mono.commit('feat: lib work', {'packages/lib/new.txt': 'n\n'})
+
+    const conflicted = await runMonosplice(mono.dir, ['sync'])
+    expect(conflicted.exitCode).not.toBe(0)
+    expect(conflicted.stderr).toContain('monosplice sync --continue')
+    expect(conflicted.stderr).toContain('monosplice pull --abort')
+    expect(conflicted.stderr).not.toContain('monosplice pull --continue')
+
+    mono.write('core/README.md', '# core\n\nmerged wording\n')
+    await mono.git(['add', 'core/README.md'])
+
+    const res = await runMonosplice(mono.dir, ['sync', '--continue'])
+    expect(res.exitCode, res.stderr).toBe(0)
+
+    // The resolution reached the standalone repo, and lib converged in the same run.
+    expect(await corePub.fileAt('HEAD', 'README.md')).toBe('# core\n\nmerged wording')
+    expect(await libPub.subjects()).toContain('feat: lib work')
+    expect(await mono.subjects()).toContain('external: lib drive-by')
+
+    const check = await runMonosplice(mono.dir, ['status', '--check'])
+    expect(check.exitCode, check.stderr).toBe(0)
+  })
+
+  it('refuses with pull’s wording when no pull is in progress', async () => {
+    const {mono} = await seededWithExternal()
+    const sync = await runMonosplice(mono.dir, ['sync', '--continue'])
+    const pull = await runMonosplice(mono.dir, ['pull', '--continue'])
+    expect(sync.exitCode).not.toBe(0)
+    expect(pull.exitCode).not.toBe(0)
+    expect(sync.stderr).toBe(pull.stderr)
   })
 })

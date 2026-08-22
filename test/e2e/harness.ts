@@ -201,14 +201,19 @@ export async function cloneRemote(root: string, remoteDir: string, name: string)
 }
 
 /**
- * Write monosplice.config.ts. `subrepos` entries are emitted verbatim when given
- * as strings (to allow function-valued hooks), or JSON-serialized objects.
+ * Write monosplice.config.ts (or another accepted extension via `filename`). `subrepos`
+ * entries are emitted verbatim when given as strings (to allow function-valued hooks), or
+ * JSON-serialized objects.
  */
-export function writeConfig(repo: TestRepo, subrepos: Array<Record<string, unknown> | string>): void {
+export function writeConfig(
+  repo: TestRepo,
+  subrepos: Array<Record<string, unknown> | string>,
+  opts: {filename?: string} = {},
+): void {
   const entries = subrepos
     .map((s) => (typeof s === 'string' ? s : JSON.stringify(s, null, 2)))
     .join(',\n')
-  repo.write('monosplice.config.ts', `export default {\n  subrepos: [\n${entries}\n  ],\n}\n`)
+  repo.write(opts.filename ?? 'monosplice.config.ts', `export default {\n  subrepos: [\n${entries}\n  ],\n}\n`)
 }
 
 /**

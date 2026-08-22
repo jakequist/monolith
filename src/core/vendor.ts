@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {loadProject, type Project, type ResolvedSubrepo} from '../config.js'
 import {git, gitOk, revParse} from './git.js'
+import {normalizeSubrepoPath} from './paths.js'
 import {pullSource} from './sync.js'
 
 /**
@@ -71,6 +72,153 @@ export function insertSubrepoEntry(source: string, entry: string): string | null
   if (at === -1) return null
   lines.splice(at + 1, 0, `${indent}  ${entry},`)
   return lines.join('\n')
+}
+
+/** Where in `source` an entry's object literal starts and ends. */
+interface EntryRange {
+  start: number
+  end: number
+  text: string
+}
+
+/** Index just past the `[` of the last `subrepos: [` line, or null when there is none. */
+function findSubreposArray(source: string): number | null {
+  const lines = source.split('\n')
+  let offset = 0
+  let at: number | null = null
+  for (const line of lines) {
+    if (SUBREPOS_OPEN.test(line)) at = offset + line.indexOf('[') + 1
+    offset += line.length + 1
+  }
+  return at
+}
+
+/** Index just past a string literal starting at `i`, or -1 when it is unterminated. */
+function skipString(source: string, i: number): number {
+  const quote = source[i]
+  for (let j = i + 1; j < source.length; j++) {
+    const c = source[j]
+    if (c === '\\') {
+      j++
+      continue
+    }
+    if (c === quote) return j + 1
+  }
+  return -1
+}
+
+/**
+ * Split the array that starts at `from` into its top-level object literals. Returns null the
+ * moment it sees anything else at that level — a spread, an identifier, a call — because a
+ * config that computes its subrepos is not something this module may rewrite.
+ */
+function scanArrayElements(source: string, from: number): EntryRange[] | null {
+  const ranges: EntryRange[] = []
+  let depth = 0
+  let objStart = -1
+  let i = from
+  while (i < source.length) {
+    const c = source[i]!
+    if (c === "'" || c === '"' || c === '`') {
+      i = skipString(source, i)
+      if (i === -1) return null
+      continue
+    }
+    if (c === '/' && source[i + 1] === '/') {
+      const nl = source.indexOf('\n', i)
+      i = nl === -1 ? source.length : nl
+      continue
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      const close = source.indexOf('*/', i + 2)
+      if (close === -1) return null
+      i = close + 2
+      continue
+    }
+    if (c === '{' || c === '[' || c === '(') {
+      if (depth === 0) {
+        if (c !== '{') return null
+        objStart = i
+      }
+      depth++
+      i++
+      continue
+    }
+    if (c === '}' || c === ']' || c === ')') {
+      if (depth === 0) return c === ']' ? ranges : null
+      depth--
+      if (depth === 0 && c === '}' && objStart !== -1) {
+        ranges.push({start: objStart, end: i + 1, text: source.slice(objStart, i + 1)})
+        objStart = -1
+      }
+      i++
+      continue
+    }
+    if (depth === 0 && c !== ',' && !/\s/.test(c)) return null
+    i++
+  }
+  return null
+}
+
+/** A single-quoted, double-quoted or bare `key: 'value'` field of an object literal. */
+function readField(text: string, key: string): string | null {
+  const re = new RegExp(`(?:^|[\\s{,])["']?${key}["']?\\s*:\\s*(?:'((?:[^'\\\\]|\\\\.)*)'|"((?:[^"\\\\]|\\\\.)*)")`)
+  const m = re.exec(text)
+  const raw = m?.[1] ?? m?.[2]
+  return raw === undefined ? null : raw.replace(/\\(.)/g, '$1')
+}
+
+/** The name the loader would give this entry, or null when it cannot be read literally. */
+function entryName(text: string): string | null {
+  const explicit = readField(text, 'name')
+  if (explicit !== null) return explicit
+  const entryPath = readField(text, 'path')
+  if (entryPath === null) return null
+  try {
+    return path.posix.basename(normalizeSubrepoPath(entryPath))
+  } catch {
+    return null
+  }
+}
+
+/** Cut an entry out, taking its trailing comma and its line with it when it had one to itself. */
+function cutRange(source: string, range: EntryRange): string {
+  let end = range.end
+  while (source[end] === ' ' || source[end] === '\t') end++
+  if (source[end] === ',') end++
+  let scan = end
+  while (source[scan] === ' ' || source[scan] === '\t') scan++
+  if (source[scan] === '\r') scan++
+  if (source[scan] === '\n') end = scan + 1
+
+  let start = range.start
+  while (start > 0 && (source[start - 1] === ' ' || source[start - 1] === '\t')) start--
+  if (start > 0 && source[start - 1] !== '\n') start = range.start
+
+  return source.slice(0, start) + source.slice(end)
+}
+
+/**
+ * The reverse of `insertSubrepoEntry`: delete the entry the loader would name `name`, or
+ * return null when the file does not spell it out plainly enough to edit. Deliberately as
+ * naive as its counterpart — every top-level element must be an object literal whose `name`
+ * (or `path`) is a string literal, and exactly one of them may match.
+ */
+export function removeSubrepoEntry(source: string, name: string): string | null {
+  const at = findSubreposArray(source)
+  if (at === null) return null
+  const ranges = scanArrayElements(source, at)
+  if (ranges === null) return null
+
+  const hits: EntryRange[] = []
+  for (const range of ranges) {
+    const resolved = entryName(range.text)
+    // An entry monosplice cannot read might BE the one to delete; refuse rather than guess.
+    if (resolved === null) return null
+    if (resolved === name) hits.push(range)
+  }
+  if (hits.length !== 1) return null
+  return cutRange(source, hits[0]!)
 }
 
 /** How a command tells the user to pick a different name or a different directory. */
@@ -157,6 +305,84 @@ export async function writeConfigEntry(
     return {snippet, reason: wrong}
   }
   return null
+}
+
+/** The config could not have an entry removed from it. The file is back to its original bytes. */
+export interface ConfigRemoveFailure {
+  reason: string
+}
+
+/** Why the config monosplice just trimmed cannot be trusted, or null when it checks out. */
+async function removedMismatch(project: Project, entry: ResolvedSubrepo): Promise<string | null> {
+  let reloaded: Project | null
+  try {
+    reloaded = await loadProject(project.root)
+  } catch (err) {
+    return `the rewritten config does not load:\n${(err as Error).message}`
+  }
+  if (!reloaded) return 'the config file vanished while monosplice was writing it'
+  if (reloaded.subrepos.some((s) => s.name === entry.name)) {
+    return `the rewritten config still has a subrepo named ${entry.name}`
+  }
+  const expected = project.subrepos.filter((s) => s.name !== entry.name)
+  if (reloaded.subrepos.length !== expected.length) {
+    return `the rewritten config resolves to ${reloaded.subrepos.length} subrepo(s) where ${expected.length} were expected`
+  }
+  for (const [i, want] of expected.entries()) {
+    const got = reloaded.subrepos[i]!
+    if (
+      got.name !== want.name ||
+      got.path !== want.path ||
+      got.remote !== want.remote ||
+      got.branch !== want.branch ||
+      got.upstream !== want.upstream ||
+      got.pushBranch !== want.pushBranch
+    ) {
+      return `the rewritten config changed subrepo ${want.name}, which monosplice was not asked to touch`
+    }
+  }
+  return null
+}
+
+/**
+ * Delete the entry textually, then prove it by reloading the config through the real loader:
+ * the named subrepo must be gone and every other one must resolve exactly as it did before.
+ * If either half fails the original bytes go back and the caller tells the user what to
+ * delete by hand — the same bargain `writeConfigEntry` makes in the other direction.
+ */
+export async function removeConfigEntry(
+  project: Project,
+  entry: ResolvedSubrepo,
+): Promise<ConfigRemoveFailure | null> {
+  const original = fs.readFileSync(project.configPath)
+  const updated = removeSubrepoEntry(original.toString('utf8'), entry.name)
+  if (updated === null) {
+    return {reason: `no plain \`subrepos: [\` entry for ${entry.name} that a text edit can safely remove`}
+  }
+
+  fs.writeFileSync(project.configPath, updated)
+  const wrong = await removedMismatch(project, entry)
+  if (wrong) {
+    fs.writeFileSync(project.configPath, original)
+    return {reason: wrong}
+  }
+  return null
+}
+
+/**
+ * What to print when monosplice will not delete the entry itself: the removal is a two-line
+ * instruction, so it goes to stdout and the error names what to run once it is done.
+ */
+export function deleteItYourself(
+  configPath: string,
+  entry: ResolvedSubrepo,
+  failure: ConfigRemoveFailure,
+): {log: string; error: string} {
+  return {
+    log: `Delete the \`subrepos\` entry for ${entry.name} (${entry.path}/ tracking ${pullSource(entry)}) from ${configPath}.\n`,
+    error: `monosplice cannot safely edit ${configPath}: ${failure.reason}.
+Nothing was changed — the config is untouched and no commit was made. Delete the entry described above by hand and commit it; ${entry.path}/ and its history stay exactly as they are either way.`,
+  }
 }
 
 /**

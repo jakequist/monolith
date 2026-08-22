@@ -37,6 +37,24 @@ export function isTriangular(subrepo: ResolvedSubrepo): boolean {
   return subrepo.upstream !== undefined
 }
 
+/** How much of the network a view may use. */
+export interface SyncViewOptions {
+  /** Skip every fetch and derive the view from the remote-tracking refs already on disk. */
+  offline?: boolean
+}
+
+/**
+ * Offline, and this subrepo has never been fetched. There is no honest answer — an absent
+ * tracking ref is indistinguishable from a remote with no branch — so the caller reports
+ * the gap instead of guessing at counts.
+ */
+export class NoFetchYetError extends Error {
+  constructor(readonly subrepo: string) {
+    super(`${subrepo}: no fetch yet — run without --offline first`)
+    this.name = 'NoFetchYetError'
+  }
+}
+
 /** What the fork's push branch looks like right now. Triangular mode only. */
 export interface ForkState {
   /** Fork branch head, or null when the fork does not have that branch yet. */
@@ -48,7 +66,12 @@ export interface ForkState {
  * does, so an unreachable fork raises a GitError the caller can attribute to the fork rather
  * than a fetch failure that reads like the branch is missing.
  */
-export async function loadForkState(root: string, subrepo: ResolvedSubrepo): Promise<ForkState> {
+export async function loadForkState(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  opts: SyncViewOptions = {},
+): Promise<ForkState> {
+  if (opts.offline) return {head: await revParse(root, forkTrackingRef(subrepo.name))}
   const head = await lsRemoteBranch(root, subrepo.remote, subrepo.pushBranch)
   if (head === null) return {head: null}
   await fetchBranch(root, subrepo.remote, subrepo.pushBranch, forkTrackingRef(subrepo.name))
@@ -59,9 +82,10 @@ export async function loadForkState(root: string, subrepo: ResolvedSubrepo): Pro
 export async function tryLoadForkState(
   root: string,
   subrepo: ResolvedSubrepo,
+  opts: SyncViewOptions = {},
 ): Promise<{state: ForkState | null; error: GitError | null}> {
   try {
-    return {state: await loadForkState(root, subrepo), error: null}
+    return {state: await loadForkState(root, subrepo, opts), error: null}
   } catch (err) {
     if (err instanceof GitError) return {state: null, error: err}
     throw err
@@ -209,10 +233,16 @@ async function findUnreflectedPub(
  * carrying git's own stderr, and a missing branch is reported as "not published yet" rather
  * than as a confusing fetch failure.
  */
-export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Promise<SyncView> {
+export async function loadSyncView(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  opts: SyncViewOptions = {},
+): Promise<SyncView> {
   const trackingRef = remoteTrackingRef(subrepo.name)
   const source = pullSource(subrepo)
-  const pubHead = await lsRemoteBranch(root, source, subrepo.branch)
+  const pubHead = opts.offline
+    ? await revParse(root, trackingRef)
+    : await lsRemoteBranch(root, source, subrepo.branch)
 
   const originByMono = (await revParse(root, 'HEAD'))
     ? await trailerValues(root, ORIGIN_TRAILER, ['HEAD'])
@@ -222,9 +252,12 @@ export async function loadSyncView(root: string, subrepo: ResolvedSubrepo): Prom
     for (const v of values) importedPubShas.add(v)
   }
 
-  if (pubHead === null) return {...unpublishedView(subrepo.name), importedPubShas}
+  if (pubHead === null) {
+    if (opts.offline) throw new NoFetchYetError(subrepo.name)
+    return {...unpublishedView(subrepo.name), importedPubShas}
+  }
 
-  await fetchBranch(root, source, subrepo.branch, trackingRef)
+  if (!opts.offline) await fetchBranch(root, source, subrepo.branch, trackingRef)
 
   const sourceByPub = await trailerValues(root, SOURCE_TRAILER, [trackingRef])
   const exportedMonoToPub = new Map<string, string>()

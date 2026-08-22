@@ -77,16 +77,38 @@ export interface Project {
   subrepos: ResolvedSubrepo[]
 }
 
-export const CONFIG_FILENAMES = ['monosplice.config.ts', 'monosplice.config.mts', 'monosplice.config.js', 'monosplice.config.mjs']
+export const CONFIG_FILENAMES = [
+  'monosplice.config.ts',
+  'monosplice.config.mts',
+  'monosplice.config.js',
+  'monosplice.config.mjs',
+  'monosplice.config.cjs',
+]
 
-/** Walk up from startDir looking for a monosplice config file. */
+/**
+ * Two config files in one directory. There is no precedence order worth inventing here: the
+ * one monosplice picked would silently be the one the user was not editing, and every command
+ * would then act on a config that is not the one on screen.
+ */
+export class MultipleConfigsError extends Error {
+  constructor(readonly configPaths: string[]) {
+    super(
+      `Multiple monosplice config files in the same directory:\n${configPaths.map((p) => `  ${p}`).join('\n')}\nmonosplice will not guess which one is authoritative. Nothing was changed. Delete all but one of them (merging their subrepos into the survivor if both are in use), then run the command again.`,
+    )
+    this.name = 'MultipleConfigsError'
+  }
+}
+
+/**
+ * Walk up from startDir looking for a monosplice config file. Throws `MultipleConfigsError`
+ * when one directory holds more than one — a loader-level check, so it guards every command.
+ */
 export function findConfig(startDir: string): string | null {
   let dir = path.resolve(startDir)
   for (;;) {
-    for (const name of CONFIG_FILENAMES) {
-      const candidate = path.join(dir, name)
-      if (fs.existsSync(candidate)) return candidate
-    }
+    const found = CONFIG_FILENAMES.map((name) => path.join(dir, name)).filter((p) => fs.existsSync(p))
+    if (found.length > 1) throw new MultipleConfigsError(found)
+    if (found.length === 1) return found[0]!
     const parent = path.dirname(dir)
     if (parent === dir) return null
     dir = parent

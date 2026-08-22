@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import {describe, expect, it} from 'vitest'
 import {
   TestRepo,
@@ -328,7 +329,7 @@ describe('S156: wording and stream consistency', () => {
     const root = await runMonosplice(mono.dir, ['--help'])
     expect(root.stdout).not.toMatch(/public/i)
 
-    for (const command of ['attach', 'push', 'pull', 'sync', 'status', 'doctor', 'tag', 'init']) {
+    for (const command of ['attach', 'detach', 'push', 'pull', 'sync', 'status', 'doctor', 'tag', 'init']) {
       const res = await runMonosplice(mono.dir, [command, '--help'])
       expect(res.exitCode, command).toBe(0)
       expect(res.stdout, command).not.toMatch(/public/i)
@@ -352,5 +353,174 @@ describe('S156: wording and stream consistency', () => {
     const json = await runMonosplice(mono.dir, ['status', '--json'])
     expect(json.stdout.trim().startsWith('{')).toBe(true)
     expect(() => JSON.parse(json.stdout)).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// S162: status --offline
+// ---------------------------------------------------------------------------------------
+
+describe('S162: status --offline', () => {
+  const OFFLINE_NOTE = 'offline: using last-fetched state'
+
+  it('reports from the last fetch and never talks to the remote', async () => {
+    const {root, mono, pub, ext} = await seededWithExternal()
+    await ext.commit('external: drive-by', {'x.txt': 'x\n'}, EXT_AUTHOR)
+    await ext.git(['push', 'origin', 'main'])
+
+    // Move the remote out of the way: anything that fetches now fails.
+    const moved = `${pub.dir}-moved`
+    fs.renameSync(pub.dir, moved)
+    try {
+      const offline = await runMonosplice(mono.dir, ['status', '--offline'])
+      expect(offline.exitCode, offline.stderr).toBe(0)
+      expect(offline.stdout).toMatch(/^core: in sync$/m)
+      expect(offline.stderr).toContain(OFFLINE_NOTE)
+
+      const online = await runMonosplice(mono.dir, ['status'])
+      expect(online.exitCode).not.toBe(0)
+    } finally {
+      fs.renameSync(moved, pub.dir)
+    }
+    expect(root).toBeTruthy()
+
+    // With the remote back, the online run sees what --offline could not.
+    const seen = await runMonosplice(mono.dir, ['status'])
+    expect(seen.exitCode, seen.stderr).toBe(0)
+    expect(seen.stdout).toMatch(/^core: 1 to pull$/m)
+  })
+
+  it('says so once per run, not once per subrepo', async () => {
+    const {mono} = await multiFixture()
+    expect((await runMonosplice(mono.dir, ['push', '--yes'])).exitCode).toBe(0)
+
+    const res = await runMonosplice(mono.dir, ['status', '--offline'])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(res.stderr.split(OFFLINE_NOTE)).toHaveLength(2)
+  })
+
+  it('refuses to guess for a subrepo that was never fetched', async () => {
+    const {mono} = await standardFixture()
+    const res = await runMonosplice(mono.dir, ['status', '--offline'])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(res.stdout).toContain('core: no fetch yet — run without --offline first')
+    expect(res.stdout).not.toMatch(/in sync/)
+
+    const check = await runMonosplice(mono.dir, ['status', '--offline', '--check'])
+    expect(check.exitCode).toBe(1)
+  })
+
+  it('combines with --json without changing the row key set', async () => {
+    const {mono} = await seededWithExternal()
+    const online = await runMonosplice(mono.dir, ['status', '--json'])
+    const offline = await runMonosplice(mono.dir, ['status', '--offline', '--json'])
+    expect(offline.exitCode, offline.stderr).toBe(0)
+
+    const parsed = JSON.parse(offline.stdout) as Record<string, unknown>
+    expect(parsed.offline).toBe(true)
+    const rows = parsed.subrepos as Array<Record<string, unknown>>
+    const onlineRows = (JSON.parse(online.stdout) as {subrepos: Array<Record<string, unknown>>}).subrepos
+    expect(Object.keys(rows[0]!).sort()).toEqual(Object.keys(onlineRows[0]!).sort())
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// S163: shell completion
+// ---------------------------------------------------------------------------------------
+
+describe('S163: shell completion', () => {
+  it('ships oclif autocomplete', async () => {
+    const mono = await emptyConfigRepo()
+    const help = await runMonosplice(mono.dir, ['autocomplete', '--help'])
+    expect(help.exitCode, help.stderr).toBe(0)
+
+    const root = await runMonosplice(mono.dir, ['--help'])
+    expect(root.stdout).toMatch(/autocomplete/)
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// S165: monosplice.config.js is the default
+// ---------------------------------------------------------------------------------------
+
+describe('S165: the .js config', () => {
+  it('init writes an ESM .js config with a JSDoc @type annotation', async () => {
+    const root = sandbox()
+    const mono = await makeRepo(root, 'mono')
+
+    const res = await runMonosplice(mono.dir, ['init'])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(mono.exists('monosplice.config.js')).toBe(true)
+    expect(mono.exists('monosplice.config.ts')).toBe(false)
+    expect(res.stdout).toContain('monosplice.config.js')
+
+    const written = mono.read('monosplice.config.js')
+    expect(written).toContain('export default')
+    expect(written).toContain('@type')
+    expect(written).toContain('monosplice')
+  })
+
+  // The ESM `export default` in a bare .js file has to load in a project that has no
+  // package.json at all AND in a CommonJS one — jiti compiles it either way, and that is
+  // exactly why the scaffold does not have to guess the user's module system.
+  it.each([
+    ['no package.json', null],
+    ['a CommonJS package.json', '{"name": "their-monorepo"}\n'],
+    ['an ESM package.json', '{"name": "their-monorepo", "type": "module"}\n'],
+  ])('loads a .js config as a first-class citizen with %s', async (_label, pkg) => {
+    const root = sandbox()
+    const mono = await makeRepo(root, 'mono')
+    const pubDir = await makeBareRemote(root, 'core-pub')
+    writeConfig(mono, [`    { name: 'core', path: 'core', remote: ${JSON.stringify(pubDir)} }`], {
+      filename: 'monosplice.config.js',
+    })
+    if (pkg !== null) mono.write('package.json', pkg)
+    await mono.commit('chore: initial monorepo', {'core/README.md': '# core\n'})
+
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes'])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect((await runMonosplice(mono.dir, ['status'])).stdout).toMatch(/^core: in sync$/m)
+  })
+
+  it('makes every command error when two config files exist, naming both', async () => {
+    const mono = await emptyConfigRepo()
+    writeConfig(mono, [], {filename: 'monosplice.config.js'})
+
+    for (const command of [['status'], ['push'], ['pull'], ['sync'], ['doctor'], ['init'], ['attach', 'core']]) {
+      const res = await runMonosplice(mono.dir, command)
+      expect(res.exitCode, command.join(' ')).not.toBe(0)
+      const out = `${res.stdout}\n${res.stderr}`
+      expect(out, command.join(' ')).toContain('monosplice.config.js')
+      expect(out, command.join(' ')).toContain('monosplice.config.ts')
+      expect(out, command.join(' ')).toMatch(/delete/i)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// S166: leading ./ on a user-supplied path
+// ---------------------------------------------------------------------------------------
+
+describe('S166: a leading ./ is tolerated', () => {
+  it('attaches ./core exactly like core', async () => {
+    const root = sandbox()
+    const mono = await makeRepo(root, 'mono')
+    const pubDir = await makeBareRemote(root, 'core-pub')
+    writeConfig(mono, [])
+    await mono.commit('chore: initial monorepo', {'core/README.md': '# core\n'})
+
+    const res = await runMonosplice(mono.dir, ['attach', './core', pubDir, '--yes'])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(mono.read('monosplice.config.ts')).toContain(`path: 'core'`)
+    expect(mono.read('monosplice.config.ts')).not.toContain(`path: './core'`)
+    expect((await runMonosplice(mono.dir, ['status'])).stdout).toMatch(/^core: in sync$/m)
+  })
+
+  it('still rejects . and .. segments', async () => {
+    const mono = await emptyConfigRepo()
+    for (const folder of ['.', './', './..', 'a/../b']) {
+      const res = await runMonosplice(mono.dir, ['attach', folder, 'git@example.test:x/y.git'])
+      expect(res.exitCode, folder).not.toBe(0)
+    }
   })
 })

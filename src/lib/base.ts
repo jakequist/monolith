@@ -1,5 +1,5 @@
 import {Command} from '@oclif/core'
-import {ConfigError, loadProject, type Project, type ResolvedSubrepo} from '../config.js'
+import {ConfigError, MultipleConfigsError, loadProject, type Project, type ResolvedSubrepo} from '../config.js'
 import {gitOk} from '../core/git.js'
 import {NO_SUBREPOS_CONFIGURED, SubrepoFailure, type Reporter} from './ops.js'
 
@@ -64,12 +64,12 @@ export abstract class MonospliceCommand extends Command {
     try {
       project = await loadProject(process.cwd())
     } catch (err) {
-      if (err instanceof ConfigError) this.error(err.message)
+      if (err instanceof ConfigError || err instanceof MultipleConfigsError) this.error(err.message)
       throw err
     }
     if (!project) {
       this.error(
-        'No monosplice config found. Run this inside a repo containing monosplice.config.ts, or run `monosplice init` to create one.',
+        'No monosplice config found. Run this inside a repo containing monosplice.config.js, or run `monosplice init` to create one.',
       )
     }
     if (!(await gitOk(project.root, ['rev-parse', '--is-inside-work-tree']))) {

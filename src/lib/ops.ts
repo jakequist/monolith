@@ -8,14 +8,14 @@ import {
   runExport,
 } from '../core/exporter.js'
 import {hasCommittedFiles} from '../core/filter.js'
-import {GitError, revParse} from '../core/git.js'
+import {GitError, commitSubjects, revList, revParse} from '../core/git.js'
 import {
   ImportConflictError,
   type PullSequencer,
   checkImportPreconditions,
   runImport,
 } from '../core/importer.js'
-import {loadSyncView, pullSource, type SyncView} from '../core/sync.js'
+import {loadSyncView, pullSource, type SyncView, type SyncViewOptions} from '../core/sync.js'
 
 /**
  * How a command talks to the terminal. Keeps the per-subrepo operations shared by
@@ -52,8 +52,13 @@ export const NO_SUBREPOS_CONFIGURED =
   'no subrepos configured — run `monosplice attach <folder> <git-url>` to connect one'
 
 /** Derive the sync view, turning an unreachable source repository into a user-facing error. */
-export async function loadView(root: string, subrepo: ResolvedSubrepo, r: Reporter): Promise<SyncView> {
-  return loadSyncView(root, subrepo).catch((err: unknown) => {
+export async function loadView(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  r: Reporter,
+  opts: SyncViewOptions = {},
+): Promise<SyncView> {
+  return loadSyncView(root, subrepo, opts).catch((err: unknown) => {
     if (err instanceof GitError) {
       const what = subrepo.upstream === undefined ? 'remote' : 'upstream'
       r.fail(`${subrepo.name}: cannot reach ${what} ${pullSource(subrepo)}\n${err.stderr}`)
@@ -102,19 +107,37 @@ Nothing was changed. Fix \`upstream\` or \`branch\` in your config, or drop \`up
   monosplice push ${subrepo.name} --yes`
 }
 
-/** The two ways out of a conflicted import, named the same way everywhere. */
-export const RESOLVE_OR_ABORT = `  monosplice pull --continue
+/**
+ * The two ways out of a conflicted import, named the same way everywhere. `sync` finishes its
+ * own interrupted run, so it substitutes its own verb — but abort is always `pull --abort`:
+ * there is one sequencer, and throwing it away is the same act whichever command wrote it.
+ */
+export function resolveOrAbort(continueCommand = 'monosplice pull --continue'): string {
+  return `  ${continueCommand}
 To abandon the import instead, restoring the monorepo to its pre-pull state:
   monosplice pull --abort`
-
-/** Shared by `pull` and `sync`: neither may start while a sequencer sits on disk. */
-export function pullInProgressMessage(state: PullSequencer): string {
-  return `A pull of ${state.subrepo} is already in progress.
-Nothing was changed. Resolve the conflict, \`git add\` the files, then run:
-${RESOLVE_OR_ABORT}`
 }
 
-export function reportImportFailure(subrepo: ResolvedSubrepo, err: unknown, r: Reporter): never {
+/** The two ways out, with `pull`'s wording — what every command but `sync` says. */
+export const RESOLVE_OR_ABORT = resolveOrAbort()
+
+/** `--continue` with nothing to continue, worded identically wherever it is offered. */
+export const NO_PULL_IN_PROGRESS =
+  'No pull is in progress — nothing to continue.\nRun `monosplice pull` to import new standalone-repo commits.'
+
+/** Shared by `pull` and `sync`: neither may start while a sequencer sits on disk. */
+export function pullInProgressMessage(state: PullSequencer, continueCommand?: string): string {
+  return `A pull of ${state.subrepo} is already in progress.
+Nothing was changed. Resolve the conflict, \`git add\` the files, then run:
+${resolveOrAbort(continueCommand)}`
+}
+
+export function reportImportFailure(
+  subrepo: ResolvedSubrepo,
+  err: unknown,
+  r: Reporter,
+  continueCommand?: string,
+): never {
   if (err instanceof ImportConflictError) {
     // The sequencer is on disk now and only one can exist, so this stops the whole run.
     r.fail(
@@ -122,7 +145,7 @@ export function reportImportFailure(subrepo: ResolvedSubrepo, err: unknown, r: R
 Conflicted files:
 ${err.conflicts.map((f) => `  ${f}`).join('\n')}
 Edit each file to resolve the markers, \`git add\` it, then run:
-${RESOLVE_OR_ABORT}`,
+${resolveOrAbort(continueCommand)}`,
       {halt: true},
     )
   }
@@ -131,7 +154,12 @@ ${RESOLVE_OR_ABORT}`,
 }
 
 /** Import every unreflected standalone-repo commit. Returns how many landed. */
-export async function importSubrepo(root: string, subrepo: ResolvedSubrepo, r: Reporter): Promise<number> {
+export async function importSubrepo(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  r: Reporter,
+  continueCommand?: string,
+): Promise<number> {
   const view = await loadView(root, subrepo, r)
   await requirePublished(root, subrepo, view, r)
   if (!view.related) r.fail(unrelatedRemote(subrepo, 'Nothing was imported.'))
@@ -141,7 +169,7 @@ export async function importSubrepo(root: string, subrepo: ResolvedSubrepo, r: R
 
   const result = await runImport(root, subrepo, view.unreflectedPub, {
     onWarn: (message) => r.warn(message),
-  }).catch((err: unknown) => reportImportFailure(subrepo, err, r))
+  }).catch((err: unknown) => reportImportFailure(subrepo, err, r, continueCommand))
 
   return result.imported.length
 }
@@ -193,6 +221,89 @@ export async function exportSubrepo(
   return result.pushed
     ? {pushed: result.exported.length, awaiting: 0}
     : {pushed: 0, awaiting: result.exported.length}
+}
+
+// ---------------------------------------------------------------------------------------
+// Dry runs. Everything below reads; nothing below writes an object, a ref or a file.
+// ---------------------------------------------------------------------------------------
+
+/** One line of a dry run: the two fields a human scans a plan for. */
+export interface PendingCommit {
+  sha: string
+  subject: string
+}
+
+/** The marker that keeps a dry run from being mistaken for a real one. */
+export const DRY_RUN_NOTE = 'dry run — nothing written'
+
+/** What a `--dry-run` found for one subrepo. */
+export type DryRunPlan =
+  | {kind: 'export'; commits: PendingCommit[]}
+  | {kind: 'import'; commits: PendingCommit[]}
+  /** The remote branch does not exist: the real push would publish it for the first time. */
+  | {kind: 'first-publish'; exportHistory: boolean; commits: PendingCommit[]}
+
+async function pending(root: string, shas: string[]): Promise<PendingCommit[]> {
+  const subjects = await commitSubjects(root, shas)
+  return shas.map((sha) => ({sha, subject: subjects.get(sha) ?? ''}))
+}
+
+/**
+ * What `push` would attempt, from the same `planExport` candidate scan `push` and `status`
+ * already share.
+ *
+ * Scan and transform hooks are deliberately NOT run: they are the gate on writing to a
+ * remote, and a dry run does not write, so this reports what would be *attempted*. The
+ * consequence — a candidate the tree-equality check or an exclude pattern would later drop
+ * still appears — is the honest direction to err in for a preview.
+ */
+export async function planPushDryRun(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  r: Reporter,
+  opts: {exportHistory: boolean},
+): Promise<DryRunPlan> {
+  const view = await loadView(root, subrepo, r)
+
+  if (view.pubHead === null) {
+    if (subrepo.upstream !== undefined) r.fail(upstreamHasNoBranch(subrepo))
+    const head = await revParse(root, 'HEAD')
+    if (!head || !(await hasCommittedFiles(root, head, subrepo))) r.fail(nothingExistsYet(subrepo))
+    const commits = opts.exportHistory
+      ? await pending(root, await revList(root, ['--reverse', '--topo-order', head, '--', subrepo.path]))
+      : []
+    return {kind: 'first-publish', exportHistory: opts.exportHistory, commits}
+  }
+
+  if (!view.related) r.fail(unrelatedRemote(subrepo, `Nothing was pushed to ${subrepo.remote}.`))
+
+  const unsafe = await checkExportPreconditions(root, subrepo, view)
+  if (unsafe) r.fail(unsafe)
+
+  if (view.unreflectedPub.length > 0) {
+    r.fail(
+      `${subrepo.name}: ${view.unreflectedPub.length} commit(s) on ${pullSource(subrepo)} have not been imported yet.\nNothing was pushed. Run \`monosplice pull ${subrepo.name}\` first, then push again.`,
+    )
+  }
+
+  const {candidates} = await planExport(root, subrepo, view)
+  return {kind: 'export', commits: await pending(root, candidates.map((c) => c.monoSha))}
+}
+
+/**
+ * What `pull` would import. The work-tree preconditions a real pull insists on are skipped
+ * on purpose: they exist to protect a write, and there is none — refusing to *show* the
+ * incoming commits because a file is edited would make the flag useless exactly when it helps.
+ */
+export async function planPullDryRun(
+  root: string,
+  subrepo: ResolvedSubrepo,
+  r: Reporter,
+): Promise<DryRunPlan> {
+  const view = await loadView(root, subrepo, r)
+  await requirePublished(root, subrepo, view, r)
+  if (!view.related) r.fail(unrelatedRemote(subrepo, 'Nothing was imported.'))
+  return {kind: 'import', commits: await pending(root, view.unreflectedPub)}
 }
 
 /** Wording that differs between the commands that can trigger a first publish. */

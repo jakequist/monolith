@@ -36,6 +36,8 @@ npm install -g monosplice
 Requires Node ≥ 20 and git ≥ 2.30. Prefer an install script or a pinned tarball? See
 [install options](docs/reference.md#install-options).
 
+Shell completion: `monosplice autocomplete` prints the one-time setup for bash or zsh.
+
 ## Quickstart
 
 One-time setup, then pick the scenario that matches yours. All three use one command:
@@ -43,8 +45,11 @@ One-time setup, then pick the scenario that matches yours. All three use one com
 
 ```sh
 cd ~/code/my-monorepo
-monosplice init          # writes monosplice.config.ts
+monosplice init          # writes monosplice.config.js
 ```
+
+TypeScript configs (`monosplice.config.ts`) work too — see
+[configuration](docs/reference.md#configuration).
 
 ### I have a monorepo and want to extract a subrepo
 
@@ -103,14 +108,16 @@ workflow — it's all in [configuration & hooks](docs/reference.md#configuration
 
 | Command | What it does |
 | --- | --- |
-| `monosplice init` | Write a starter `monosplice.config.ts`. |
-| `monosplice push [subrepo]` | Export new monorepo commits to the standalone repo(s). |
-| `monosplice pull [subrepo]` | Import new standalone-repo commits into the monorepo. `--continue` resumes after a conflict, `--abort` throws it away. |
-| `monosplice sync [subrepo]` | Pull, then push — converge both sides. |
-| `monosplice status [--json] [--check]` | Per-subrepo "N to push, M to pull", or "in sync". `--check` exits 1 unless everything is converged. |
+| `monosplice init` | Write a starter `monosplice.config.js`. |
+| `monosplice push [subrepo]` | Export new monorepo commits to the standalone repo(s). `--dry-run` lists them and writes nothing. |
+| `monosplice pull [subrepo]` | Import new standalone-repo commits into the monorepo. `--dry-run` previews, `--continue` resumes after a conflict, `--abort` throws it away. |
+| `monosplice sync [subrepo]` | Pull, then push — converge both sides. `--continue` finishes a sync that stopped on a conflict. |
+| `monosplice status [--json] [--check] [--offline]` | Per-subrepo "N to push, M to pull", or "in sync". `--check` exits 1 unless everything is converged; `--offline` fetches nothing. |
 | `monosplice attach <folder> [git-url]` | Connect `<folder>` to a repo — creates the config entry and makes first contact. See Quickstart. |
+| `monosplice detach <subrepo>` | Stop tracking a subrepo: removes the config entry, keeps the folder and all of its history. |
 | `monosplice doctor [--json]` | Verify the derived sync state against reality; non-zero exit on problems. |
 | `monosplice tag <subrepo> <tag>` | Tag the standalone repo at the commit matching monorepo HEAD. |
+| `monosplice autocomplete` | Print the one-time bash/zsh completion setup. |
 | `monosplice update` | Self-update from npm. |
 
 Full flags and edge-case behaviour: [docs/reference.md](docs/reference.md).
@@ -186,9 +193,9 @@ The honest list, current as of v0.x:
   but know it's there before you publish.
 - **No shallow clones.** Sync state is re-derived by walking history, so a shallow monorepo
   clone stops with an error rather than guessing.
-- **`status` talks to the network.** Re-deriving state is a couple of `git log` scans per
-  subrepo — cheap. Fetching each remote, which every run also does, is what you actually
-  wait on. An offline mode is planned.
+- **`status` talks to the network by default.** Re-deriving state is a couple of `git log`
+  scans per subrepo — cheap. Fetching each remote is what you actually wait on;
+  `monosplice status --offline` skips it and measures against the last fetch instead.
 - **Node ≥ 20 runtime.** This is a TypeScript CLI, not a git subcommand.
 
 ## Going deeper

@@ -17,7 +17,7 @@ monosplice attach core                               # folder already in your co
 ```
 
 With a URL, `attach` writes the `subrepos` entry for `<folder>` into your
-`monosplice.config.ts` first. Without one, `<folder>` must already match a configured
+`monosplice.config.js` first. Without one, `<folder>` must already match a configured
 subrepo — by path or by name — and nothing is written to the config at all; only first
 contact is made. Either way the move is the same:
 
@@ -66,6 +66,33 @@ prints an advisory naming the fork setup to use instead. It never blocks, and it
 where it would be meaningless: with `--fork`, or when the remote was empty and the first
 publish proved write access by doing it.
 
+## Disconnecting a subrepo
+
+`monosplice detach <subrepo>` is the reverse of attach's config write, and *only* that:
+
+```sh
+monosplice detach core
+# ✓ detached core — /repo/monosplice.config.js no longer tracks git@github.com:you/core.git
+#   core/ is kept exactly as it is, and every commit stays in your monorepo history.
+```
+
+The folder stays, every commit stays, and the `Monosplice-Source`/`Monosplice-Origin` trailers
+on past commits simply go inert — nothing reads them once no entry names that subrepo. The
+config edit is committed on its own (`Detach <name>: stop tracking <url>`), and the output
+prints the `monosplice attach <path> <url>` that connects it again later, with the URL it was
+actually tracking.
+
+It never contacts the network — there is nothing to tell the remote — and it refuses, leaving
+the config byte-identical and making no commit, on an unknown subrepo, on a subrepo whose pull
+is sitting unfinished, and on a dirty working tree or a dirty index (it commits the index, so
+it insists on the same clean tree `attach` does).
+
+The removal is textual, then verified: monosplice deletes the entry from the `subrepos: [`
+array, reloads the config through the real loader, and checks that the named subrepo is gone
+*and* that every other one still resolves exactly as it did. If the file cannot be edited that
+way — a computed array, an entry whose `path` is not a literal — the original bytes go back
+byte-for-byte, no commit is made, and monosplice tells you which entry to delete by hand.
+
 ## Vendoring a third-party project
 
 The same command covers a third-party repo you want *inside* your monorepo — tracked,
@@ -76,7 +103,7 @@ monosplice attach vendor/lodash git@github.com:lodash/lodash.git
 # ✓ attached lodash at vendor/lodash (tracking git@github.com:lodash/lodash.git#main)
 ```
 
-One command, one commit: the entry goes into your `monosplice.config.ts`, lodash's current
+One command, one commit: the entry goes into your `monosplice.config.js`, lodash's current
 tree is materialized at `vendor/lodash/`, and both are committed **together** with a
 `Monosplice-Origin` trailer anchoring the pair. The subrepo name defaults to the last path
 segment (`lodash`); `--name` and `--branch` override the defaults.
@@ -169,7 +196,20 @@ clean, because it commits the index.
 
 ## Configuration
 
-`monosplice.config.ts` sits at the root of your monorepo (`.mts`, `.js` and `.mjs` also work). It is loaded with [jiti](https://github.com/unjs/jiti), so TypeScript and ESM work with no build step.
+`monosplice.config.js` sits at the root of your monorepo — that is what `monosplice init` writes. TypeScript configs (`monosplice.config.ts`) work too, as do `.mts`, `.mjs` and `.cjs`; the file is loaded with [jiti](https://github.com/unjs/jiti), so TypeScript and ESM work with no build step whatever your project's own module system is. Exactly **one** of them may exist in a directory: two and every command stops and tells you to delete one, rather than silently acting on the file you were not editing.
+
+The scaffold is plain ESM with a JSDoc annotation, so editors complete the fields with no TypeScript involved:
+
+```js
+/** @type {import('monosplice').MonospliceConfig} */
+export default {
+  subrepos: [
+    {path: 'core', remote: 'git@github.com:you/core.git'},
+  ],
+}
+```
+
+In TypeScript, `defineConfig()` does the same job:
 
 ```ts
 import {defineConfig} from 'monosplice'
@@ -189,7 +229,7 @@ export default defineConfig({
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `path` | `string` | yes | Directory inside the monorepo, relative to the config file. `packages/lib` is fine. Cannot be the repo root, cannot contain `.`/`..`, and two subrepos may not nest inside one another. |
+| `path` | `string` | yes | Directory inside the monorepo, relative to the config file. `packages/lib` is fine, and a leading `./` is normalized away. Cannot be the repo root, cannot contain `.`/`..` segments, and two subrepos may not nest inside one another. |
 | `remote` | `string` | yes | Git URL of the standalone repository. With `upstream` set, this is your fork: the push destination, and the only repo monosplice writes to. |
 | `upstream` | `string` | no | Git URL to pull from when it differs from the one you push to (fork workflow). Every sync decision — imports, anchors, ahead/behind — is made against it. Must differ from `remote`. |
 | `name` | `string` | no | The handle you type (`monosplice push core`). Defaults to the last segment of `path`. Must be unique. |
@@ -274,6 +314,8 @@ Each incoming commit is applied with `git apply --3way --index`, so non-conflict
 
 You resolve, `git add`, and run `monosplice pull --continue`. The import lands as a monorepo commit carrying `Monosplice-Origin`, and the remaining commits replay on top. A conflict stops the whole run even with several subrepos configured, because only one sequencer can exist at a time.
 
+A conflict during `monosplice sync` names `monosplice sync --continue` instead, and that is the one to run: it finishes the interrupted import exactly as `pull --continue` does and then runs the push phase the interrupted run never reached — for **every** subrepo, since one that is already converged simply reports "up to date". `monosplice pull --abort` still abandons the import whichever command started it; there is one sequencer, and throwing it away is the same act either way.
+
 ### Aborting
 
 `monosplice pull --abort` throws the interrupted import away. It restores the subrepo directory and the index to the tree they had before the pull started, deletes the sequencer, and rewinds the commits this pull run had already imported — but only when the sequencer can *prove* they are its own: it recorded the pre-pull HEAD and the sha of every commit it created, and it rewinds only if the commits between the two are exactly that list and nothing else. If you committed something yourself after the conflict, that proof fails, so abort undoes only the conflicted step, keeps the rest, and prints the pre-pull sha so you can decide for yourself.
@@ -283,6 +325,36 @@ Nothing outside the subrepo directory is ever touched — unstaged edits and unt
 Aborting with no pull in progress is an error, and so is combining `--abort` with `--continue`.
 
 Then comes the subtle part, and it is deliberate: your resolution is **re-exported** on the next push. A pure import reproduces the remote tip's tree exactly, so the tree-equality check drops it and nothing is published (no ping-pong). But a *conflicted* import is a genuine merge of monorepo and external edits — its tree differs from the remote tip — so it must go out, or the standalone repo would silently lose your resolution. That is the rule that keeps "the exported tree equals the filtered monorepo tree" true after every push.
+
+## Previewing a run, and working offline
+
+`--dry-run` on `push` and `pull` prints exactly what would move and writes nothing — no remote
+ref, no monorepo commit, no working-tree or index change:
+
+```console
+$ monosplice push --dry-run
+core: 2 to push (dry run — nothing written)
+  4a91c2f0b1 feat(core): add the greeter
+  9f2c1ab0e4 fix(core): guard the empty case
+```
+
+Nothing pending prints the up-to-date line, and either way the exit code is 0. The plan comes
+from the same candidate scan `push` and `status` share, so it is not a separate code path that
+can drift.
+
+One deliberate gap: **`scan` and `transform` hooks do not run on a dry run.** They are the gate
+on writing to a remote, and a dry run does not write — so the list is what would be *attempted*,
+and a commit a hook would reject still appears in it. The real push is still gated: a throwing
+hook aborts it with nothing published. `pull --dry-run` likewise skips the clean-working-tree
+check a real pull insists on, since that check exists to protect a write.
+
+`monosplice status --offline` skips fetching entirely and measures against the remote-tracking
+refs the last run left under `refs/monosplice/`. It says so once per run on stderr
+(`offline: using last-fetched state`), so stdout stays pipeable, and it combines with `--json`
+(which gains a top-level `offline: true`; the per-subrepo key set is unchanged) and `--check`.
+A subrepo that has never been fetched is reported as `no fetch yet — run without --offline
+first` rather than guessed at: with no tracking ref, "never fetched" and "the remote has no
+branch" are the same picture from here.
 
 ## Exit codes and machine-readable output
 
@@ -315,6 +387,14 @@ npm install -g https://github.com/jakequist/monosplice/releases/download/v0.3.1/
 ```
 
 Once installed, `monosplice update` self-updates from npm (`monosplice update --check` just reports installed vs. latest).
+
+### Shell completion
+
+`monosplice autocomplete` (oclif's autocomplete plugin) prints the one-time setup for your shell:
+
+```sh
+monosplice autocomplete bash   # or: zsh
+```
 
 ## Releasing
 

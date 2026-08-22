@@ -10,9 +10,17 @@ export function makeExcluder(patterns: readonly string[]): (relPath: string) => 
   return (relPath) => isMatch(relPath)
 }
 
-/** Normalize a configured subrepo path: strip leading/trailing slashes, reject escapes. */
+/**
+ * Normalize a configured subrepo path: strip leading/trailing slashes and a leading `./`,
+ * reject escapes.
+ *
+ * The `./` tolerance is not cosmetic: it is what a shell's own tab-completion produces, and
+ * what the README quickstart types (`attach ./core`). Only the *leading* prefix is forgiven —
+ * a `.` or `..` anywhere else still means the caller is pointing outside the subrepo.
+ */
 export function normalizeSubrepoPath(p: string): string {
-  const cleaned = p.replace(/^\/+/, '').replace(/\/+$/, '')
+  let cleaned = p.replace(/^\/+/, '').replace(/\/+$/, '')
+  while (cleaned.startsWith('./')) cleaned = cleaned.slice(2).replace(/^\/+/, '')
   if (cleaned === '' || cleaned === '.') throw new Error(`subrepo path may not be the repo root: ${JSON.stringify(p)}`)
   const segments = cleaned.split('/')
   if (segments.some((s) => s === '..' || s === '.')) {

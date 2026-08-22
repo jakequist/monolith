@@ -29,4 +29,21 @@ describe('normalizeSubrepoPath', () => {
     expect(() => normalizeSubrepoPath('.')).toThrow()
     expect(() => normalizeSubrepoPath('a/../b')).toThrow()
   })
+
+  // S166: the README quickstart types `attach ./core`, and shell completion produces it.
+  it('tolerates a leading ./ and normalizes it away', () => {
+    expect(normalizeSubrepoPath('./core')).toBe('core')
+    expect(normalizeSubrepoPath('./packages/lib')).toBe('packages/lib')
+    expect(normalizeSubrepoPath('./core/')).toBe('core')
+    expect(normalizeSubrepoPath('.//core')).toBe('core')
+    expect(normalizeSubrepoPath('././core')).toBe('core')
+  })
+
+  it('still rejects bare . and .. once the leading ./ is gone', () => {
+    expect(() => normalizeSubrepoPath('./')).toThrow()
+    expect(() => normalizeSubrepoPath('./.')).toThrow()
+    expect(() => normalizeSubrepoPath('./..')).toThrow()
+    expect(() => normalizeSubrepoPath('./../core')).toThrow()
+    expect(() => normalizeSubrepoPath('./a/./b')).toThrow()
+  })
 })
