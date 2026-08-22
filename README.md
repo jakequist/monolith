@@ -50,19 +50,14 @@ monosplice init          # writes monosplice.config.ts
 
 ```bash
 # Create a new repo at github.com:acme/core.git
-
-$ monosplice attach core git@github.com:acme/core.git
-
-# acme/core.git (main) is empty. Publish core's current tree as its first public commit? [y/N]
+$ monosplice attach ./core git@github.com:acme/core.git
 ```
 
-`core/`'s contents become the root of `acme/core` in one baseline commit (`--yes` in
-scripts; `--full-history` replays every commit that ever touched `core/` instead).
 
 ### I have a monorepo and want to import an external repo
 
 ```sh
-monosplice attach packages/auth git@github.com:acme/auth.git
+monosplice attach ./packages/auth git@github.com:acme/auth.git
 ```
 
 `packages/auth/` doesn't exist yet, so attach copies the repo's current tree there in a
@@ -74,7 +69,7 @@ Edge cases — the folder already has content, the trees differ — are covered 
 ### I have a vendor repo and want to splice it
 
 ```sh
-monosplice attach vendor/lodash git@github.com:lodash/lodash.git
+monosplice attach ./vendor/lodash git@github.com:lodash/lodash.git
 ```
 
 The same move as importing — the `vendor/` prefix is just convention. From then on it's a
