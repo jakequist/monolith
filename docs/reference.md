@@ -594,7 +594,7 @@ exact artifact is a URL:
 
 ```sh
 curl -fsSL -o monosplice.tar.gz \
-  https://github.com/jakequist/monosplice/releases/download/v0.4.0/monosplice-0.4.0-x86_64-unknown-linux-musl.tar.gz
+  https://github.com/jakequist/monosplice/releases/download/v1.0.0/monosplice-1.0.0-x86_64-unknown-linux-musl.tar.gz
 tar -xzf monosplice.tar.gz && install -m 755 monosplice /usr/local/bin/
 ```
 
@@ -615,7 +615,7 @@ both, changing nothing:
 
 ```console
 $ monosplice update --check
-installed: 0.4.0
+installed: 1.0.0
 latest:    0.4.1
 Run `monosplice update` to install 0.4.1.
 ```
