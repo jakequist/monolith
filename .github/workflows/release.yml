@@ -1,3 +1,5 @@
+# The npm trusted publisher registered on npmjs.com is exactly this filename.
+# Renaming this file breaks publishing until the registration is updated.
 name: release
 
 on:
@@ -11,14 +13,149 @@ permissions:
   id-token: write
 
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          version: 10
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Tag, Cargo.toml and npm/package.json must agree
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          crate_version="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "monosplice") | .version')"
+          npm_version="$(node -p "require('./npm/package.json').version")"
+          mismatch=0
+          if [ "$tag_version" != "$crate_version" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match the Cargo.toml version ${crate_version}." >&2
+            mismatch=1
+          fi
+          if [ "$tag_version" != "$npm_version" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match the npm/package.json version ${npm_version}." >&2
+            mismatch=1
+          fi
+          if [ "$mismatch" -ne 0 ]; then
+            echo "Set \"version\" to ${tag_version} in both Cargo.toml and npm/package.json, commit, then retag:" >&2
+            echo "  git tag -d ${GITHUB_REF_NAME} && git push origin :${GITHUB_REF_NAME} && git tag ${GITHUB_REF_NAME} && git push origin ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+          echo "Releasing monosplice ${tag_version}."
+
+      - run: cargo fmt --all --check
+
+      - run: cargo clippy --all-targets -- -D warnings
+
+      - run: cargo test
+
+  build:
+    needs: verify
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            exe: .exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # The runner carries no aarch64 musl linker. `cross` builds in a container
+      # image that does; every other target builds natively on its own runner.
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross@0.2.5
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
+
+      # monosplice-<version>-<target>.tar.gz holding exactly one `monosplice`
+      # binary at the archive root: the shape `monosplice update` untars.
+      # tar.gz on Windows too — Windows 10+ ships bsdtar as `tar`.
+      - name: Package
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          bin="monosplice${{ matrix.exe }}"
+          staging="$(mktemp -d)"
+          cp "target/${{ matrix.target }}/release/${bin}" "${staging}/${bin}"
+          tar -czf "monosplice-${version}-${{ matrix.target }}.tar.gz" -C "$staging" "$bin"
+          ls -l "monosplice-${version}-${{ matrix.target }}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monosplice-${{ matrix.target }}
+          path: monosplice-*-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: monosplice-*
+          merge-multiple: true
+
+      # install.sh ships as a release asset so the documented one-liner
+      #   curl -fsSL .../releases/latest/download/install.sh | sh
+      # always resolves to the installer for the newest release.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -l dist
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/*.tar.gz \
+            install.sh
+
+  # The npm package is a downloader shim: its postinstall fetches the binary from
+  # the release created above, so it must publish after the release exists.
+  npm-publish:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       # No registry-url here: setup-node would write a placeholder token into
       # .npmrc, which shadows the OIDC trusted-publishing exchange. Node >= 22
@@ -26,44 +163,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Tag must match package.json version
-        run: |
-          tag_version="${GITHUB_REF_NAME#v}"
-          pkg_version="$(node -p "require('./package.json').version")"
-          if [ "$tag_version" != "$pkg_version" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match the package.json version ${pkg_version}." >&2
-            echo "Bump \"version\" in package.json to ${tag_version}, commit, then retag:" >&2
-            echo "  git tag -d ${GITHUB_REF_NAME} && git push origin :${GITHUB_REF_NAME} && git tag ${GITHUB_REF_NAME} && git push origin ${GITHUB_REF_NAME}" >&2
-            exit 1
-          fi
-
-      - run: pnpm test:all
-
-      - name: Pack the release tarball
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          pnpm pack
-          cp "monosplice-${version}.tgz" monosplice.tgz
-          ls -l "monosplice-${version}.tgz" monosplice.tgz
-
-      - name: Create the GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            "monosplice-${version}.tgz" \
-            monosplice.tgz
 
       - name: Publish to npm (trusted publishing)
+        working-directory: npm
         run: |
-          # OIDC exchange requires a recent npm; node 20's bundled npm is too old.
+          # OIDC exchange requires a recent npm; the bundled one is too old.
           npm install -g npm@latest
-          version="${GITHUB_REF_NAME#v}"
-          npm publish "monosplice-${version}.tgz" --access public
+          npm publish --provenance --access public

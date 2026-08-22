@@ -1,0 +1,38 @@
+{
+  "name": "monosplice",
+  "version": "0.4.0",
+  "description": "Ergonomic bidirectional sync between a monorepo and the standalone repos it splices out. Submodule accuracy without submodule pain.",
+  "keywords": [
+    "git",
+    "monorepo",
+    "subtree",
+    "submodule",
+    "open-source",
+    "sync",
+    "copybara"
+  ],
+  "license": "MIT",
+  "author": "Jake Quist",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jakequist/monosplice.git",
+    "directory": "npm"
+  },
+  "homepage": "https://github.com/jakequist/monosplice",
+  "bugs": {
+    "url": "https://github.com/jakequist/monosplice/issues"
+  },
+  "bin": {
+    "monosplice": "./bin/monosplice.js"
+  },
+  "files": [
+    "bin",
+    "install.js"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
