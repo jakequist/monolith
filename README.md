@@ -165,16 +165,16 @@ Details: [the conflict flow](docs/reference.md#the-conflict-flow).
 
 Yes, we know about all of these. Here's the honest scorecard:
 
-| | git submodule | git subtree | git-subrepo | josh | Copybara | monosplice |
-| --- | --- | --- | --- | --- | --- | --- |
-| Files in the monorepo | pointer, not content | real files | real files | real files | real files | real files |
-| Contributor setup | `submodule update --init`, forever | none | none | clones go through the proxy | none | none |
-| Export granularity | n/a (same repo) | squash or graft | squashed per push | per commit (deterministic filter) | per commit | per commit |
-| Contributions back in | manual, by hand | `subtree pull` (merge noise) | `subrepo pull` (squash) | push through the proxy | yes, workflow-driven | yes, `monosplice pull` with 3-way merge |
-| Secret scan / tree transform | no | no | no | path filters only | yes (Starlark) | yes (TypeScript hooks) |
-| Where the mapping lives | gitlink shas | subtree merge commit messages | `.gitrepo` file committed in your tree | nowhere — deterministic rewrite | labels in commit messages | commit trailers, re-derived every run |
-| Runtime | git | git | bash | Rust proxy server you host | Java (+ Bazel to build) | Node ≥ 20 |
-| Scope | vendoring dependencies | grafting a directory in/out | one dir ↔ one repo | serving many filtered views of a big monorepo | large-scale internal→external pipelines | one monorepo publishing a handful of directories |
+| | git submodule | git subtree | git-subrepo | monosplice |
+| --- | --- | --- | --- | --- |
+| Files in the monorepo | pointer, not content | real files | real files | real files |
+| Contributor setup | `submodule update --init`, forever | none | none | none |
+| Export granularity | n/a (same repo) | squash or graft | squashed per push | per commit |
+| Contributions back in | manual, by hand | `subtree pull` (merge noise) | `subrepo pull` (squash) | yes, `monosplice pull` with 3-way merge |
+| Secret scan / tree transform | no | no | no | yes (TypeScript hooks) |
+| Where the mapping lives | gitlink shas | subtree merge commit messages | `.gitrepo` file committed in your tree | commit trailers, re-derived every run |
+| Runtime | git | git | bash | Node ≥ 20 |
+| Scope | vendoring dependencies | grafting a directory in/out | one dir ↔ one repo | one monorepo publishing a handful of directories |
 
 Short version: submodules make the *contributor* pay for your publishing strategy.
 `git subtree` moves directories but has no excludes, no transforms, no scan that can block a
