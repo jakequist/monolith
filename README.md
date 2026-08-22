@@ -40,7 +40,7 @@ binary in `/usr/local/bin` (or `~/.local/bin` if it can't write there). If you'd
 build it yourself:
 
 ```sh
-cargo install monosplice
+cargo install --git https://github.com/jakequist/monosplice
 ```
 
 npm still works, for the muscle memory and for `package.json`-shaped CI — it is now a shim

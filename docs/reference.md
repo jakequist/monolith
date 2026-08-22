@@ -574,10 +574,10 @@ and installs to `/usr/local/bin` (falling back to `~/.local/bin` when it cannot 
 curl -fsSL https://github.com/jakequist/monosplice/releases/latest/download/install.sh | sh
 ```
 
-From crates.io, if you would rather build it:
+With cargo, if you would rather build it (the crate is not on crates.io yet):
 
 ```sh
-cargo install monosplice
+cargo install --git https://github.com/jakequist/monosplice
 ```
 
 From npm, which is now a shim that downloads the same binary on install — for muscle memory,

@@ -1,7 +1,11 @@
 # Rust port — spec of record
 
-monosplice is being rewritten from TypeScript/oclif to Rust (branch `rust`). The `.ts`
-sources stay on disk during the port as the behavioral reference — **port behavior and
+> **Status: completed.** The port landed on this branch and the TypeScript sources were
+> removed; they live in git history (last TS tree: the parent of the teardown commit).
+> This document is kept as the design record of the rewrite's decisions.
+
+monosplice was rewritten from TypeScript/oclif to Rust (branch `rust`). The `.ts`
+sources stayed on disk during the port as the behavioral reference — **port behavior and
 user-facing wording from them exactly** unless this document says otherwise. The
 architecture invariants in CLAUDE.md ("Model B", trailers as source of truth, derived
 cursors, plumbing-only export, fail loud, triangular rules) are unchanged and binding.
