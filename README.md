@@ -109,8 +109,7 @@ can't push to, see the [fork workflow](docs/reference.md#pushing-patches-back-up
 
 ### Life continues as normal
 
-Whatever you attached, your monorepo behaves as if the subrepos are simple files. You
-manage the subrepos via the `monosplice` CLI.
+Whatever you attached, your monorepo behaves as if the subrepos are simple files.  You manage the subrepos via the `monosplice` CLI. 
 
 ```sh
 git commit -am "feat(core): add the greeter"
@@ -120,7 +119,7 @@ monosplice status   # core: 1 to push
 monosplice push     # exports the core/ commit, and only that one
 ```
 
-To fetch the latest code from an upstream subrepo:
+To fetch the latest code from an upstream subrepo: 
 
 ```sh
 monosplice pull     # replays it into core/, original author preserved
