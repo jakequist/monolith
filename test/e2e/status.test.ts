@@ -25,7 +25,9 @@ interface StatusJson {
 }
 
 /** Run `status` both ways and check the JSON contract on every call site (S85). */
-async function status(dir: string): Promise<{human: string; json: StatusJson; core: Record<string, unknown>}> {
+async function status(
+  dir: string,
+): Promise<{human: string; notes: string; json: StatusJson; core: Record<string, unknown>}> {
   const human = await runMonosplice(dir, ['status'])
   expect(human.exitCode, human.stderr).toBe(0)
 
@@ -35,7 +37,8 @@ async function status(dir: string): Promise<{human: string; json: StatusJson; co
   expect(Array.isArray(parsed.subrepos)).toBe(true)
   const core = parsed.subrepos[0]!
   expect(Object.keys(core).sort()).toEqual(SUBREPO_KEYS)
-  return {human: human.stdout, json: parsed, core}
+  // S156: the per-subrepo lines are status data (stdout); `!` annotations are diagnostics (stderr).
+  return {human: human.stdout, notes: human.stderr, json: parsed, core}
 }
 
 async function seededWithExternal(opts: {configExtra?: string} = {}): Promise<{
@@ -158,8 +161,9 @@ describe('S50 / S85: status across the lifecycle', () => {
     expect(conflicted.exitCode).not.toBe(0)
 
     const s = await status(mono.dir)
-    expect(s.human).toMatch(/pull/i)
-    expect(s.human).toMatch(/--continue/)
+    expect(s.notes).toMatch(/pull/i)
+    expect(s.notes).toMatch(/--continue/)
+    expect(s.human).not.toMatch(/--continue/)
     expect(s.core).toMatchObject({pullInProgress: true})
   })
 
@@ -176,7 +180,7 @@ describe('S50 / S85: status across the lifecycle', () => {
     const human = await runMonosplice(mono.dir, ['status'])
     expect(human.exitCode, human.stderr).toBe(0)
     expect(human.stdout).toMatch(/1 to push/)
-    expect(human.stdout).toContain('possible secret in config.ts')
+    expect(human.stderr).toContain('possible secret in config.ts')
 
     const json = await runMonosplice(mono.dir, ['status', '--json'])
     expect(json.exitCode, json.stderr).toBe(0)

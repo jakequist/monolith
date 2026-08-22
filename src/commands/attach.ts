@@ -35,20 +35,20 @@ interface AttachFlags {
   name?: string
   branch?: string
   yes: boolean
-  'full-history': boolean
-  history: boolean
+  'export-history': boolean
+  'import-history': boolean
   theirs: boolean
   fork?: string
 }
 
 export default class Attach extends MonospliceCommand {
   static description =
-    'Connect a folder to a public repo and make first contact; writes the config entry when the folder is not configured yet'
+    'Connect a folder to a standalone repo and make first contact; writes the config entry when the folder is not configured yet'
 
   static args = {
     folder: Args.string({description: 'Directory in this monorepo to connect (or the name of a configured subrepo)', required: true}),
     url: Args.string({
-      description: 'Git URL of the public repository. Optional when <folder> is already in your config',
+      description: 'Git URL of the standalone repository. Optional when <folder> is already in your config',
       required: false,
     }),
   }
@@ -61,16 +61,18 @@ export default class Attach extends MonospliceCommand {
       description: 'Answer the first-publish confirmation with yes (required in scripts and CI)',
       default: false,
     }),
-    'full-history': Flags.boolean({
-      description: 'First publish only: replay every commit touching <folder> instead of one baseline commit',
+    'export-history': Flags.boolean({
+      description:
+        'First publish only: replay every monorepo commit that touched <folder> instead of one baseline commit (not to be confused with --import-history, which goes the other way)',
       default: false,
     }),
-    history: Flags.boolean({
-      description: 'Replay every public commit into <folder> instead of recording one snapshot commit',
+    'import-history': Flags.boolean({
+      description:
+        "Replay every commit from the standalone repo into <folder> instead of recording one snapshot commit (not to be confused with --export-history, which goes the other way)",
       default: false,
     }),
     theirs: Flags.boolean({
-      description: 'When both sides have content, replace <folder> with the public tree',
+      description: 'When both sides have content, replace <folder> with the standalone tree',
       default: false,
     }),
     fork: Flags.string({
@@ -82,8 +84,8 @@ export default class Attach extends MonospliceCommand {
     '<%= config.bin %> <%= command.id %> core git@github.com:you/core.git',
     '<%= config.bin %> <%= command.id %> core',
     '<%= config.bin %> <%= command.id %> packages/lib git@github.com:you/lib.git --name lib',
-    '<%= config.bin %> <%= command.id %> core git@github.com:you/core.git --yes --full-history',
-    '<%= config.bin %> <%= command.id %> core --history',
+    '<%= config.bin %> <%= command.id %> core git@github.com:you/core.git --yes --export-history',
+    '<%= config.bin %> <%= command.id %> core --import-history',
     '<%= config.bin %> <%= command.id %> core --theirs',
     '<%= config.bin %> <%= command.id %> vendor/lodash git@github.com:lodash/lodash.git --fork git@github.com:you/lodash.git',
   ]
@@ -154,7 +156,7 @@ Nothing was changed. Drop --branch, or change \`branch\` in ${project.configPath
     // Preconditions before the network: a dirty tree must be reported without side effects,
     // not after a fetch has already written a tracking ref.
     const state = await readSequencer(root)
-    if (state) this.error(await pullInProgressMessage(root, state))
+    if (state) this.error(pullInProgressMessage(state))
     const problem = await checkImportPreconditions(root, entry, retry)
     if (problem) this.error(problem)
 
@@ -171,7 +173,7 @@ Nothing was changed. Drop --branch, or change \`branch\` in ${project.configPath
     if (view.related) {
       this.error(
         `${entry.name}: already connected to ${source} — monosplice trailers already link the two repositories, so there is nothing to attach.
-Nothing was changed. Run \`monosplice pull ${entry.name}\` to import new public commits, \`monosplice push ${entry.name}\` to export new monorepo commits, or \`monosplice sync ${entry.name}\` for both.`,
+Nothing was changed. Run \`monosplice pull ${entry.name}\` to import new standalone-repo commits, \`monosplice push ${entry.name}\` to export new monorepo commits, or \`monosplice sync ${entry.name}\` for both.`,
       )
     }
 
@@ -201,22 +203,22 @@ Nothing was changed. Run \`monosplice pull ${entry.name}\` to import new public 
     const r = this.reporter()
     if (entry.upstream !== undefined) this.error(upstreamHasNoBranch(entry))
     if (!hasContent) this.error(nothingExistsYet(entry))
-    if (flags.history) {
+    if (flags['import-history']) {
       this.error(
-        `${entry.name}: --history replays public commits into ${entry.path}/, but ${entry.remote} has no ${entry.branch} branch yet.
-Nothing was changed. Drop --history to publish ${entry.path}/ instead, adding --full-history to replay every monorepo commit that touched it.`,
+        `${entry.name}: --import-history replays the standalone repo's commits into ${entry.path}/, but ${entry.remote} has no ${entry.branch} branch yet.
+Nothing was changed. Drop --import-history to publish ${entry.path}/ instead, adding --export-history to replay every monorepo commit that touched it.`,
       )
     }
 
     const result = await firstPublish(root, entry, r, {
-      fullHistory: flags['full-history'],
+      exportHistory: flags['export-history'],
       confirm: () => confirmFirstPublish(entry, r, {yes: flags.yes}),
     })
-    const how = result.fullHistory ? `replayed ${result.commits} commit(s)` : 'one baseline commit'
+    const how = result.exportHistory ? `replayed ${result.commits} commit(s)` : 'one baseline commit'
     this.log(`✓ ${entry.name}: published ${entry.path}/ to ${entry.remote} (${entry.branch}) — ${how}`)
   }
 
-  /** The subrepo directory has no committed files: take the public repo wholesale. */
+  /** The subrepo directory has no committed files: take the standalone repo wholesale. */
   private async snapshotIntoEmptyPath(
     root: string,
     entry: ResolvedSubrepo,
@@ -225,7 +227,7 @@ Nothing was changed. Drop --history to publish ${entry.path}/ instead, adding --
     r: Reporter,
     flags: AttachFlags,
   ): Promise<number> {
-    if (flags.history) return this.replayPublicHistory(root, entry, view.unreflectedPub, r)
+    if (flags['import-history']) return this.replayStandaloneHistory(root, entry, view.unreflectedPub, r)
 
     const pubTree = await git(root, ['rev-parse', `${pubHead}^{tree}`])
     await applyTreeInto(root, entry, EMPTY_TREE, pubTree)
@@ -243,7 +245,7 @@ Nothing was changed. Drop --history to publish ${entry.path}/ instead, adding --
     r: Reporter,
     flags: AttachFlags,
   ): Promise<number> {
-    if (flags.history) this.error(this.historyNeedsEmptyPath(entry, retry))
+    if (flags['import-history']) this.error(this.historyNeedsEmptyPath(entry, retry))
 
     const monoTree =
       (await filteredSubtree(root, head, entry).catch((err: unknown) => {
@@ -287,7 +289,7 @@ Nothing was changed. Configured subrepos: ${known}`,
 
     // Everything below writes something. Nothing above did.
     const state = await readSequencer(root)
-    if (state) this.error(await pullInProgressMessage(root, state))
+    if (state) this.error(pullInProgressMessage(state))
     const problem = await checkConfigEditPreconditions(root, retry)
     if (problem) this.error(problem)
 
@@ -311,10 +313,10 @@ Nothing was changed — the config is untouched and no commit was made. Check th
           `${nothingExistsYet(entry)}\nNothing was changed — the config is untouched. Run \`${retry}\` again once either side has content.`,
         )
       }
-      if (flags.history) {
+      if (flags['import-history']) {
         this.error(
-          `${entry.name}: --history replays public commits into ${entry.path}/, but ${source} has no ${entry.branch} branch yet.
-Nothing was changed — the config is untouched and no commit was made. Drop --history to publish ${entry.path}/ instead, adding --full-history to replay every monorepo commit that touched it.`,
+          `${entry.name}: --import-history replays the standalone repo's commits into ${entry.path}/, but ${source} has no ${entry.branch} branch yet.
+Nothing was changed — the config is untouched and no commit was made. Drop --import-history to publish ${entry.path}/ instead, adding --export-history to replay every monorepo commit that touched it.`,
         )
       }
       await this.attachAndPublish(project, entry, flags)
@@ -357,12 +359,12 @@ Nothing was changed — the config is untouched and no commit was made. Drop --h
   private requireFreePath(root: string, entry: ResolvedSubrepo, retry: string): void {
     if (!fs.existsSync(path.join(root, entry.path))) return
     this.error(
-      `${entry.path} already exists in ${root}, but has no committed files, so monosplice will not write the public tree over it.
+      `${entry.path} already exists in ${root}, but has no committed files, so monosplice will not write the standalone tree over it.
 Nothing was changed — the config is untouched and no commit was made. Remove it (or commit its contents), then run \`${retry}\` again.`,
     )
   }
 
-  /** The public head, null when the remote has no such branch yet. */
+  /** The standalone branch head, null when the remote has no such branch yet. */
   private async resolveRemoteHead(root: string, entry: ResolvedSubrepo): Promise<string | null> {
     const source = pullSource(entry)
     const what = entry.upstream === undefined ? 'remote' : 'upstream'
@@ -392,7 +394,7 @@ Nothing was changed — the config is untouched and no commit was made. Remove i
 
     const r = this.reporter()
     const result = await firstPublish(root, entry, r, {
-      fullHistory: flags['full-history'],
+      exportHistory: flags['export-history'],
       confirm: () =>
         confirmFirstPublish(entry, r, {
           yes: flags.yes,
@@ -400,14 +402,14 @@ Nothing was changed — the config is untouched and no commit was made. Remove i
           cancelNote: ` The config entry was committed — run \`monosplice push ${entry.name} --yes\` when you are ready.`,
         }),
     })
-    const how = result.fullHistory ? `replayed ${result.commits} commit(s)` : 'one baseline commit'
+    const how = result.exportHistory ? `replayed ${result.commits} commit(s)` : 'one baseline commit'
     this.log(`✓ ${entry.name}: published ${entry.path}/ to ${entry.remote} (${entry.branch}) — ${how}`)
   }
 
   /**
    * Inbound first contact: the remote already has history. The config entry rides along in
    * the same commit — the anchor and the entry that gives it meaning belong together. With
-   * `--history` it cannot: each replayed commit is its own, so the entry is committed first.
+   * `--import-history` it cannot: each replayed commit is its own, so the entry is committed first.
    */
   private async attachToHistory(
     project: Project,
@@ -422,7 +424,7 @@ Nothing was changed — the config is untouched and no commit was made. Remove i
     const pubTree = await git(root, ['rev-parse', `${ctx.pubHead}^{tree}`])
     const monoTree = ctx.hasContent ? ((await filteredSubtree(root, ctx.head, entry)) ?? EMPTY_TREE) : EMPTY_TREE
 
-    if (ctx.flags.history && ctx.hasContent) this.error(this.historyNeedsEmptyPath(entry, ctx.retry))
+    if (ctx.flags['import-history'] && ctx.hasContent) this.error(this.historyNeedsEmptyPath(entry, ctx.retry))
 
     if (ctx.hasContent && monoTree !== pubTree && !ctx.flags.theirs) {
       this.error(
@@ -438,10 +440,10 @@ Nothing was changed — the config is untouched and no commit was made. Remove i
     }
 
     let replayed = 0
-    if (ctx.flags.history) {
-      await this.commitEntry(project, entry, `${ctx.retry} --history`)
+    if (ctx.flags['import-history']) {
+      await this.commitEntry(project, entry, `${ctx.retry} --import-history`)
       const view = await loadView(root, entry, r)
-      replayed = await this.replayPublicHistory(root, entry, view.unreflectedPub, r)
+      replayed = await this.replayStandaloneHistory(root, entry, view.unreflectedPub, r)
     } else {
       await this.insertEntry(project, entry, `monosplice attach ${entry.path}`)
       await git(root, ['add', '--', project.configPath])
@@ -449,7 +451,7 @@ Nothing was changed — the config is untouched and no commit was made. Remove i
       await commitStaged(root, adoptMessage(entry, ctx.pubHead))
     }
 
-    const how = ctx.flags.history ? ` — replayed ${replayed} commit(s)` : ''
+    const how = ctx.flags['import-history'] ? ` — replayed ${replayed} commit(s)` : ''
     this.log(
       `✓ attached ${entry.name} at ${entry.path} (tracking ${source}#${entry.branch}) @ ${ctx.pubHead.slice(0, 10)}${how}`,
     )
@@ -483,8 +485,8 @@ Nothing was changed — the config is untouched and no commit was made. Remove i
   // Shared moves and shared wording.
   // ---------------------------------------------------------------------------------------
 
-  /** Replay every unreflected public commit into the subrepo. Returns how many landed. */
-  private async replayPublicHistory(
+  /** Replay every unreflected standalone-repo commit into the subrepo. Returns how many landed. */
+  private async replayStandaloneHistory(
     root: string,
     entry: ResolvedSubrepo,
     candidates: string[],
@@ -497,8 +499,8 @@ Nothing was changed — the config is untouched and no commit was made. Remove i
   }
 
   private historyNeedsEmptyPath(entry: ResolvedSubrepo, retry: string): string {
-    return `${entry.name}: --history replays the public history into an empty path, but ${entry.path}/ already has committed files.
-Nothing was changed. Run \`${retry}\` (add --theirs if the public tree should win).`
+    return `${entry.name}: --import-history replays the standalone repo's history into an empty path, but ${entry.path}/ already has committed files.
+Nothing was changed. Run \`${retry}\` (add --theirs if the standalone tree should win).`
   }
 
   private async treesDiffer(
@@ -512,7 +514,7 @@ Nothing was changed. Run \`${retry}\` (add --theirs if the public tree should wi
     const paths = await differingPaths(root, monoTree, pubTree)
     return `${entry.name}: ${entry.path}/ and ${pullSource(entry)} (${entry.branch}) both have content, and their trees differ:
 ${paths.map((p) => `  ${p}`).join('\n')}
-${stateNote} Either make the two trees match and run \`${retry}\` again, or take the public tree wholesale:
+${stateNote} Either make the two trees match and run \`${retry}\` again, or take the standalone tree wholesale:
   ${retry} --theirs`
   }
 

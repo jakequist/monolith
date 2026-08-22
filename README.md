@@ -62,7 +62,7 @@ monosplice attach ./packages/auth git@github.com:acme/auth.git
 
 `packages/auth/` doesn't exist yet, so attach copies the repo's current tree there in a
 single commit and records which remote commit it came from. You're in sync immediately — no
-need to replay the remote's history (though `--history` will, if you want it in your log).
+need to replay the remote's history (though `--import-history` will, if you want it in your log).
 Edge cases — the folder already has content, the trees differ — are covered in
 [connecting a repo that already exists](docs/reference.md#connecting-a-repo-that-already-exists).
 
@@ -105,11 +105,11 @@ workflow — it's all in [configuration & hooks](docs/reference.md#configuration
 | --- | --- |
 | `monosplice init` | Write a starter `monosplice.config.ts`. |
 | `monosplice push [subrepo]` | Export new monorepo commits to the standalone repo(s). |
-| `monosplice pull [subrepo]` | Import new standalone-repo commits into the monorepo. `--continue` resumes after a conflict. |
+| `monosplice pull [subrepo]` | Import new standalone-repo commits into the monorepo. `--continue` resumes after a conflict, `--abort` throws it away. |
 | `monosplice sync [subrepo]` | Pull, then push — converge both sides. |
-| `monosplice status [--json]` | Per-subrepo "N to push, M to pull", or "in sync". |
+| `monosplice status [--json] [--check]` | Per-subrepo "N to push, M to pull", or "in sync". `--check` exits 1 unless everything is converged. |
 | `monosplice attach <folder> [git-url]` | Connect `<folder>` to a repo — creates the config entry and makes first contact. See Quickstart. |
-| `monosplice doctor` | Verify the derived sync state against reality; non-zero exit on problems. |
+| `monosplice doctor [--json]` | Verify the derived sync state against reality; non-zero exit on problems. |
 | `monosplice tag <subrepo> <tag>` | Tag the standalone repo at the commit matching monorepo HEAD. |
 | `monosplice update` | Self-update from npm. |
 
@@ -120,7 +120,7 @@ Full flags and edge-case behaviour: [docs/reference.md](docs/reference.md).
 **Two histories, one mapping.** The monorepo and each standalone repo have independent
 histories; monosplice replays commits between them and records the correspondence in commit
 trailers (the `Key: value` lines git keeps at the end of a commit message) — exports carry
-`Monosplice-Source: <monorepo-sha>`, imports carry `Monosplice-Origin: <public-sha>`. Each
+`Monosplice-Source: <monorepo-sha>`, imports carry `Monosplice-Origin: <standalone-sha>`. Each
 export is built with git plumbing (`ls-tree`, `mktree`, `commit-tree`) and preserves the
 original author and dates. The remote ref is written exactly once — after every commit and
 every hook has succeeded. Commits that touch nothing exportable produce no commit on the
@@ -144,8 +144,9 @@ the push. See [configuration & hooks](docs/reference.md#configuration).
 
 **Conflicts are just merges.** Imports apply with `git apply --3way`, so concurrent edits to
 different lines merge silently. A real conflict leaves standard markers; you resolve,
-`git add`, `monosplice pull --continue` — and your resolution is re-exported so neither side
-loses it. Details: [the conflict flow](docs/reference.md#the-conflict-flow).
+`git add`, `monosplice pull --continue` — or `monosplice pull --abort` to put the monorepo
+back exactly as it was. A resolution you keep is re-exported, so neither side loses it.
+Details: [the conflict flow](docs/reference.md#the-conflict-flow).
 
 ## Compared to the alternatives
 

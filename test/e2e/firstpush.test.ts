@@ -54,7 +54,7 @@ describe('S02: first `push --yes` (baseline)', () => {
   })
 })
 
-describe('S03: first `push --yes --full-history`', () => {
+describe('S03: first `push --yes --export-history`', () => {
   it('replays every commit touching core with messages, authors and trailers preserved', async () => {
     const {mono, pubDir} = await standardFixture()
     await mono.commit('feat: add util', {'core/src/util.ts': 'export const n = 1\n'}, {
@@ -64,7 +64,7 @@ describe('S03: first `push --yes --full-history`', () => {
     await mono.commit('chore: private only', {'private/notes.md': 'nope\n'})
     await mono.commit('fix: tweak readme', {'core/README.md': '# core\n\nmore\n'})
 
-    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--export-history'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const monoCoreShas = (await mono.git(['rev-list', '--reverse', '--topo-order', 'HEAD', '--', 'core'])).split('\n')
@@ -91,9 +91,9 @@ describe('S03: first `push --yes --full-history`', () => {
     const before = await pub.head()
 
     await mono.commit('feat: later', {'core/later.txt': 'l\n'})
-    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--export-history'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/--full-history/)
+    expect(res.stderr).toMatch(/--export-history/)
     expect(res.stderr).toMatch(/already/i)
     expect(await pub.head()).toBe(before)
   })
@@ -118,12 +118,12 @@ describe('S04: first push honors exclude patterns', () => {
     expect(paths).not.toContain('src/keys.secret.ts')
   })
 
-  it('omits excluded files with --full-history too', async () => {
+  it('omits excluded files with --export-history too', async () => {
     const {mono, pubDir} = await standardFixture({configExtra: `exclude: ['INTERNAL.md']`})
     await mono.commit('feat: internal notes', {'core/INTERNAL.md': 'do not publish\n'})
     await mono.commit('feat: public thing', {'core/src/public.ts': 'export const p = 1\n'})
 
-    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--export-history'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const pub = new TestRepo(pubDir)
@@ -234,7 +234,7 @@ describe('S91: `push --yes` baseline then normal exports', () => {
   })
 })
 
-describe('S92: `push --yes --full-history` runs scan hooks per replayed commit', () => {
+describe('S92: `push --yes --export-history` runs scan hooks per replayed commit', () => {
   it('aborts with nothing pushed when a hook throws on a historical commit', async () => {
     const {mono, pubDir} = await standardFixture({
       configExtra: `scan: (files, ctx) => {
@@ -246,11 +246,11 @@ describe('S92: `push --yes --full-history` runs scan hooks per replayed commit',
       }`,
     })
     await mono.commit('feat: safe', {'core/safe.txt': 'fine\n'})
-    // a secret that was committed and later removed: only --full-history sees it
+    // a secret that was committed and later removed: only --export-history sees it
     const leak = await mono.commit('feat: oops', {'core/config.ts': 'export const token = "SECRET-abc"\n'})
     await mono.commit('fix: remove the secret', {'core/config.ts': null})
 
-    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['push', 'core', '--yes', '--export-history'])
     expect(res.exitCode).not.toBe(0)
     expect(res.stderr).toContain('possible secret in config.ts')
     expect(res.stderr).toContain(leak)

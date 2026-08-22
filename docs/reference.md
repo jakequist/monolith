@@ -23,20 +23,20 @@ contact is made. Either way the move is the same:
 
 | `path/` in the monorepo | remote branch | What happens |
 | --- | --- | --- |
-| empty / absent | has history | Materializes the remote's HEAD tree at `path/` in **one** monorepo commit (`Adopt <name> from …`, carrying `Monosplice-Origin`). `--history` replays every public commit instead, authors and messages preserved. |
+| empty / absent | has history | Materializes the remote's HEAD tree at `path/` in **one** monorepo commit (`Adopt <name> from …`, carrying `Monosplice-Origin`). `--import-history` replays every commit from the standalone repo instead, authors and messages preserved. |
 | has content | has history | Only if the two trees already match — that records the baseline as an empty commit. Otherwise monosplice lists the differing paths and stops; `--theirs` replaces `path/` with the remote tree in one commit. |
-| has content | empty | The first publish, confirmation-gated: a prompt at a terminal, `--yes` in scripts. Publishes the current tree as one `Initial import of <name>` commit; `--full-history` replays every commit that touched the directory instead. |
+| has content | empty | The first publish, confirmation-gated: a prompt at a terminal, `--yes` in scripts. Publishes the current tree as one `Initial import of <name>` commit; `--export-history` replays every monorepo commit that touched the directory instead. |
 | empty / absent | empty | Nothing exists yet. Commit something, or point the URL at a repo that has content. |
 
 ```sh
 # a repo with 200 commits of its own history, no core/ in the monorepo yet
 monosplice attach core git@github.com:you/core.git             # one commit: "Adopt core from …@ 9f2c1ab0e4"
-monosplice attach core git@github.com:you/core.git --history   # …or replay all 200 into core/
+monosplice attach core git@github.com:you/core.git --import-history   # …or replay all 200 into core/
 ```
 
 When the folder is new, the config entry and the tree land in the **same** commit — the
 anchor and the entry that gives it meaning belong together. The two exceptions commit the
-entry on its own first, because what follows cannot share a commit with it: `--history`
+entry on its own first, because what follows cannot share a commit with it: `--import-history`
 (each replayed commit is its own) and a first publish (which asks before writing to the
 remote, and the entry must survive a "no").
 
@@ -266,14 +266,37 @@ $ monosplice pull
  ›     core/src/index.ts
  ›   Edit each file to resolve the markers, `git add` it, then run:
  ›     monosplice pull --continue
- ›   To abort instead, delete /path/to/repo/.git/monosplice/pull-state.json.
+ ›   To abandon the import instead, restoring the monorepo to its pre-pull state:
+ ›     monosplice pull --abort
 ```
 
-Each incoming commit is applied with `git apply --3way --index`, so non-conflicting concurrent edits merge silently. On a real conflict, monosplice leaves standard conflict markers in your working tree and writes a sequencer file under `.git/monosplice/` — a transient record of "which commit we were on and what is left", exactly like `.git/rebase-merge`. It is never committed and never part of your project.
+Each incoming commit is applied with `git apply --3way --index`, so non-conflicting concurrent edits merge silently. On a real conflict, monosplice leaves standard conflict markers in your working tree and writes a sequencer file under `.git/monosplice/` — a transient record of which commit we were on, what is left, where the run started and what it has committed so far, exactly like `.git/rebase-merge`. It is never committed and never part of your project.
 
-You resolve, `git add`, and run `monosplice pull --continue`. The import lands as a monorepo commit carrying `Monosplice-Origin`, and the remaining commits replay on top.
+You resolve, `git add`, and run `monosplice pull --continue`. The import lands as a monorepo commit carrying `Monosplice-Origin`, and the remaining commits replay on top. A conflict stops the whole run even with several subrepos configured, because only one sequencer can exist at a time.
+
+### Aborting
+
+`monosplice pull --abort` throws the interrupted import away. It restores the subrepo directory and the index to the tree they had before the pull started, deletes the sequencer, and rewinds the commits this pull run had already imported — but only when the sequencer can *prove* they are its own: it recorded the pre-pull HEAD and the sha of every commit it created, and it rewinds only if the commits between the two are exactly that list and nothing else. If you committed something yourself after the conflict, that proof fails, so abort undoes only the conflicted step, keeps the rest, and prints the pre-pull sha so you can decide for yourself.
+
+Nothing outside the subrepo directory is ever touched — unstaged edits and untracked files elsewhere in the monorepo survive an abort untouched, which a plain `git reset --hard` would not manage. Untracked files *under* the subrepo path do not: `pull` refuses to start unless that directory is pristine, so anything untracked there was created by the import being abandoned.
+
+Aborting with no pull in progress is an error, and so is combining `--abort` with `--continue`.
 
 Then comes the subtle part, and it is deliberate: your resolution is **re-exported** on the next push. A pure import reproduces the remote tip's tree exactly, so the tree-equality check drops it and nothing is published (no ping-pong). But a *conflicted* import is a genuine merge of monorepo and external edits — its tree differs from the remote tip — so it must go out, or the standalone repo would silently lose your resolution. That is the rule that keeps "the exported tree equals the filtered monorepo tree" true after every push.
+
+## Exit codes and machine-readable output
+
+Every command exits **0** on success (including "already converged, nothing to do") and **1** on any error or `--check` failure; `status` without `--check` is always 0 because reporting a difference is not an error, while `doctor` exits non-zero whenever it found a problem.
+
+`status --check` is the CI form: same human report, but exit 1 unless every subrepo is fully in sync — nothing to push, nothing to pull, no unreachable remote. `status --json` and `doctor --json` print one stable object on stdout and nothing else; diagnostics and warnings always go to stderr, so either can be piped straight into `jq`.
+
+```sh
+monosplice status --check              # 0 = converged, 1 = drift
+monosplice status --json | jq '.subrepos[] | select(.inSync | not) | .name'
+monosplice doctor --json | jq '.problems'
+```
+
+With several subrepos configured, one failing subrepo never silences the others: `push`, `pull` and `sync` report every failure together at the end and exit 1. The one exception is an import conflict, which writes the sequencer and therefore stops the run where it stands.
 
 ## Install options
 

@@ -132,13 +132,13 @@ describe('S130: attach a configured subrepo with no url (pub history, no mono di
   })
 })
 
-describe('S131: attach --history', () => {
+describe('S131: attach --import-history', () => {
   it('replays every public commit with authors and messages preserved, then is in sync', async () => {
     const {mono, pub, pubHead, pubSubjects} = await configuredFixture({commits: 5})
     const monoBefore = await mono.subjects()
     const before = configBytes(mono)
 
-    const res = await runMonosplice(mono.dir, ['attach', 'core', '--history'])
+    const res = await runMonosplice(mono.dir, ['attach', 'core', '--import-history'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const subjects = await mono.subjects()
@@ -165,9 +165,9 @@ describe('S131: attach --history', () => {
     const {mono} = await configuredFixture({monoCore: {'core/README.md': '# mono side\n'}})
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['attach', 'core', '--history'])
+    const res = await runMonosplice(mono.dir, ['attach', 'core', '--import-history'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/--history/)
+    expect(res.stderr).toMatch(/--import-history/)
     expect(res.stderr).toMatch(/already has committed files/)
     expect(res.stderr).toMatch(/monosplice attach core/)
     expect(await mono.head()).toBe(head)
@@ -178,9 +178,9 @@ describe('S131: attach --history', () => {
     const {mono} = await configuredFixture({emptyRemote: true, monoCore: {'core/README.md': '# core\n'}})
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['attach', 'core', '--history'])
+    const res = await runMonosplice(mono.dir, ['attach', 'core', '--import-history'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/--history/)
+    expect(res.stderr).toMatch(/--import-history/)
     expect(await mono.head()).toBe(head)
   })
 })
@@ -283,7 +283,7 @@ describe('S133: attach a configured subrepo whose remote is empty', () => {
     expect(await pub.git(['rev-parse', '--verify', '--quiet', 'refs/heads/main']).catch(() => '')).toBe('')
   })
 
-  it('--yes publishes the baseline, --full-history replays', async () => {
+  it('--yes publishes the baseline, --export-history replays', async () => {
     const {mono, pub} = await configuredFixture({emptyRemote: true, monoCore})
 
     const res = await runMonosplice(mono.dir, ['attach', 'core', '--yes'])
@@ -295,7 +295,7 @@ describe('S133: attach a configured subrepo whose remote is empty', () => {
 
     const other = await configuredFixture({emptyRemote: true, monoCore})
     await other.mono.commit('feat: more core', {'core/src/util.ts': 'export const n = 1\n'})
-    const full = await runMonosplice(other.mono.dir, ['attach', 'core', '--yes', '--full-history'])
+    const full = await runMonosplice(other.mono.dir, ['attach', 'core', '--yes', '--export-history'])
     expect(full.exitCode, full.stderr).toBe(0)
     expect(await other.pub.subjects()).toEqual(['chore: initial monorepo', 'feat: more core'])
   })

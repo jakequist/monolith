@@ -7,11 +7,11 @@ import type {SyncView} from '../core/sync.js'
 import {loadView, requirePublished} from '../lib/ops.js'
 
 export default class Tag extends MonospliceCommand {
-  static description = 'Tag the public commit that corresponds to the current monorepo HEAD'
+  static description = 'Tag the standalone commit that corresponds to the current monorepo HEAD'
 
   static args = {
     subrepo: Args.string({description: 'Name of the subrepo to tag', required: true}),
-    tag: Args.string({description: 'Tag name to create on the public remote', required: true}),
+    tag: Args.string({description: 'Tag name to create on the standalone remote', required: true}),
   }
 
   static examples = ['<%= config.bin %> <%= command.id %> core v1.0.0']
@@ -40,7 +40,7 @@ If you really want one on your fork, create it yourself:
     // requirePublished exits the process when pubHead is null; TS cannot see that.
     const pubHead = view.pubHead!
 
-    // A tag is a promise that "this public commit is what the monorepo says it is",
+    // A tag is a promise that "this commit is what the monorepo says it is",
     // so it may only be created when both sides are already reflected in each other.
     await this.requireNothingToPush(root, subrepo, view)
     this.requireNothingToPull(subrepo, view)
@@ -71,7 +71,7 @@ If you really want one on your fork, create it yourself:
 
     this.error(
       `${subrepo.name}: ${planned.length} commit(s) have not been exported yet, so ${subrepo.remote} does not match monorepo HEAD.
-Tagging now would name a public commit that is missing that work. No tag was created.
+Tagging now would name a commit that is missing that work. No tag was created.
 Run \`monosplice push ${subrepo.name}\` first, then tag again.`,
     )
   }
@@ -81,7 +81,7 @@ Run \`monosplice push ${subrepo.name}\` first, then tag again.`,
 
     this.error(
       `${subrepo.name}: ${view.unreflectedPub.length} commit(s) on ${subrepo.remote} have not been imported yet.
-Tagging now would name public work the monorepo has never seen. No tag was created.
+Tagging now would name work the monorepo has never seen. No tag was created.
 Run \`monosplice pull ${subrepo.name}\` first, then tag again.`,
     )
   }
@@ -100,7 +100,7 @@ Run \`monosplice pull ${subrepo.name}\` first, then tag again.`,
     const sha = existing.split('\t')[0] ?? '(unknown)'
     this.error(
       `${subrepo.name}: tag ${tag} already exists on ${subrepo.remote} (${sha.slice(0, 10)}).
-Monosplice never moves an existing public tag. Pick another name, or delete it yourself with:
+Monosplice never moves an existing tag on the standalone repo. Pick another name, or delete it yourself with:
   git push ${subrepo.remote} :refs/tags/${tag}`,
     )
   }

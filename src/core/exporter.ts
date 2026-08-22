@@ -274,7 +274,7 @@ export async function checkExportPreconditions(
 ): Promise<string | null> {
   const broken = view.brokenSourceRefs[0]
   if (broken) {
-    return `${subrepo.name}: public commit ${broken.pubSha} carries ${SOURCE_TRAILER}: ${broken.monoSha}, but that monorepo commit does not exist in this clone.
+    return `${subrepo.name}: standalone commit ${broken.pubSha} carries ${SOURCE_TRAILER}: ${broken.monoSha}, but that monorepo commit does not exist in this clone.
 The commit mapping is broken, so monosplice cannot tell what is already published and will not export on top of it. Nothing was pushed to ${subrepo.remote}.
 Run \`monosplice doctor\` to see the full picture.`
   }

@@ -339,7 +339,9 @@ describe('S114: unreachable upstream vs unreachable fork', () => {
     const status = await runMonosplice(fx.mono.dir, ['status'])
     expect(status.exitCode, status.stderr).toBe(0)
     expect(status.stdout).toContain('1 to push')
-    expect(status.stdout).toContain('cannot reach fork')
+    // The counts are status data (stdout); "I could not see the fork" is a diagnostic (stderr).
+    expect(status.stdout).not.toContain('cannot reach fork')
+    expect(status.stderr).toContain('cannot reach fork')
   })
 })
 

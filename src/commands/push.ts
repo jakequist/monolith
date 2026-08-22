@@ -2,7 +2,6 @@ import {Args, Flags} from '@oclif/core'
 import type {ResolvedSubrepo} from '../config.js'
 import {MonospliceCommand} from '../lib/base.js'
 import {
-  SubrepoFailure,
   confirmFirstPublish,
   exportSubrepo,
   firstPublish,
@@ -13,11 +12,11 @@ import {
 
 interface PushFlags {
   yes: boolean
-  'full-history': boolean
+  'export-history': boolean
 }
 
 export default class Push extends MonospliceCommand {
-  static description = 'Export new monorepo commits to the public subrepo remotes'
+  static description = 'Export new monorepo commits to the standalone subrepo remotes'
 
   static args = {
     subrepo: Args.string({description: 'Only push this subrepo (defaults to all)', required: false}),
@@ -29,8 +28,9 @@ export default class Push extends MonospliceCommand {
       description: 'Answer the first-publish confirmation with yes (required in scripts and CI)',
       default: false,
     }),
-    'full-history': Flags.boolean({
-      description: 'First publish only: replay every commit touching the subrepo instead of one baseline commit',
+    'export-history': Flags.boolean({
+      description:
+        'First publish only: replay every monorepo commit that touched the subrepo instead of one baseline commit (not to be confused with `attach --import-history`, which replays the standalone repo\'s commits inwards)',
       default: false,
     }),
   }
@@ -39,7 +39,7 @@ export default class Push extends MonospliceCommand {
     '<%= config.bin %> <%= command.id %>',
     '<%= config.bin %> <%= command.id %> core',
     '<%= config.bin %> <%= command.id %> core --yes',
-    '<%= config.bin %> <%= command.id %> core --yes --full-history',
+    '<%= config.bin %> <%= command.id %> core --yes --export-history',
   ]
 
   async run(): Promise<void> {
@@ -48,28 +48,10 @@ export default class Push extends MonospliceCommand {
 
     // One subrepo refusing (typically: never published, no --yes) must not silence the
     // others, so failures are collected and reported together at the end.
-    const reporter: Reporter = {
-      log: (message) => this.log(message),
-      warn: (message) => this.logToStderr(message),
-      fail: (message) => {
-        throw new SubrepoFailure(message)
-      },
-    }
-
-    const failures: string[] = []
-    for (const subrepo of this.selectSubrepos(project, args.subrepo)) {
-      try {
-        await this.pushOne(project.root, subrepo, reporter, flags)
-      } catch (err) {
-        if (err instanceof SubrepoFailure) {
-          failures.push(err.message)
-          continue
-        }
-        throw err
-      }
-    }
-
-    if (failures.length > 0) this.error(failures.join('\n\n'), {exit: 1})
+    const reporter = this.collectingReporter()
+    await this.eachSubrepo(this.selectSubrepos(project, args.subrepo), (subrepo) =>
+      this.pushOne(project.root, subrepo, reporter, flags),
+    )
   }
 
   private async pushOne(
@@ -84,17 +66,17 @@ export default class Push extends MonospliceCommand {
 
     if (view.pubHead === null) {
       const result = await firstPublish(root, subrepo, r, {
-        fullHistory: flags['full-history'],
+        exportHistory: flags['export-history'],
         confirm: () => confirmFirstPublish(subrepo, r, {yes: flags.yes}),
       })
-      const how = result.fullHistory ? `replayed ${result.commits} commit(s)` : 'one baseline commit'
+      const how = result.exportHistory ? `replayed ${result.commits} commit(s)` : 'one baseline commit'
       this.log(`✓ ${subrepo.name}: published ${subrepo.path}/ to ${subrepo.remote} (${subrepo.branch}) — ${how}`)
       return
     }
 
-    if (flags['full-history']) {
+    if (flags['export-history']) {
       r.fail(
-        `${subrepo.name}: --full-history only applies to the first publish, and ${subrepo.remote} already has a ${subrepo.branch} branch (${view.pubHead.slice(0, 10)}).
+        `${subrepo.name}: --export-history only applies to the first publish, and ${subrepo.remote} already has a ${subrepo.branch} branch (${view.pubHead.slice(0, 10)}).
 Nothing was pushed. Run \`monosplice push ${subrepo.name}\` to export new commits.`,
       )
     }

@@ -1,11 +1,11 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type {ResolvedSubrepo} from '../config.js'
-import {EMPTY_TREE, git, gitBuffer, gitOk, readCommit, revParse} from './git.js'
+import {EMPTY_TREE, git, gitBuffer, gitOk, readCommit, revList, revParse} from './git.js'
 import {makeExcluder} from './paths.js'
 import {ORIGIN_TRAILER, appendTrailer} from './trailers.js'
 
-/** The public commit currently being replayed, captured so `--continue` can finish it. */
+/** The standalone-repo commit currently being replayed, captured so `--continue` can finish it. */
 export interface PullSequencerCommit {
   sha: string
   message: string
@@ -18,11 +18,27 @@ export interface PullSequencerCommit {
 /**
  * Transient state for an interrupted import. Lives under the git dir, never in the work
  * tree and never committed: it is a sequencer like `.git/rebase-merge`, not project state.
+ *
+ * The last three fields exist so `--abort` can put the monorepo back exactly as it was: the
+ * subrepo directory bounds what abort is allowed to touch, `startHead` is where the run
+ * began, and `created` is the proof that everything between the two is monosplice's own work.
  */
 export interface PullSequencer {
   subrepo: string
+  /** Subrepo directory, so `--abort` still works if the config entry was removed meanwhile. */
+  path?: string
   current: PullSequencerCommit
   remaining: string[]
+  /** Monorepo HEAD before this pull run committed anything. */
+  startHead?: string
+  /** Monorepo commits this run created before the conflict, oldest first. */
+  created?: string[]
+}
+
+/** Where a pull run started and what it has committed so far, carried across `--continue`. */
+export interface RunProvenance {
+  startHead: string
+  created: string[]
 }
 
 export class ImportConflictError extends Error {
@@ -132,19 +148,22 @@ async function commitImport(root: string, c: PullSequencerCommit): Promise<strin
 function excludeWarning(subrepo: ResolvedSubrepo, relPath: string): string {
   return `warning: ${subrepo.name}: imported ${subrepo.path}/${relPath}, but it matches an exclude pattern in your config.
 The next \`monosplice push ${subrepo.name}\` will DELETE it from ${subrepo.remote}.
-Rename the file or drop the pattern from \`exclude\` if you want to keep it public.`
+Rename the file or drop the pattern from \`exclude\` if you want to keep it in the standalone repo.`
 }
 
+/** Either the commit an import created, or the paths its three-way apply left unmerged. */
+type ImportStep = {monoSha: string; conflicts?: undefined} | {monoSha?: undefined; conflicts: string[]}
+
 /**
- * Replay one public commit onto the work tree. Returns the unmerged paths when the
- * three-way apply conflicted, or null when it applied and was committed.
+ * Replay one standalone-repo commit onto the work tree. Returns the unmerged paths when the
+ * three-way apply conflicted, or the monorepo commit it created when it applied.
  */
 async function importOne(
   root: string,
   subrepo: ResolvedSubrepo,
   meta: PullSequencerCommit,
   opts: ImportOptions,
-): Promise<string[] | null> {
+): Promise<ImportStep> {
   const base = await diffBase(root, meta.sha)
   const patch = await gitBuffer(root, ['diff-tree', '--binary', '-M', '-p', base, meta.sha])
 
@@ -156,7 +175,7 @@ async function importOne(
     } catch (err) {
       const conflicts = await unmergedPaths(root)
       if (conflicts.length === 0) throw err
-      return conflicts
+      return {conflicts}
     }
   }
 
@@ -168,8 +187,7 @@ async function importOne(
     }
   }
 
-  await commitImport(root, meta)
-  return null
+  return {monoSha: await commitImport(root, meta)}
 }
 
 async function readSequencerCommit(root: string, sha: string): Promise<PullSequencerCommit> {
@@ -183,25 +201,36 @@ async function readSequencerCommit(root: string, sha: string): Promise<PullSeque
   }
 }
 
-/** Replay public commits (oldest first) into the monorepo, stopping at the first conflict. */
+/**
+ * Replay standalone-repo commits (oldest first) into the monorepo, stopping at the first
+ * conflict. `run` carries the provenance of an already-started pull across `--continue`; left
+ * out, this call *is* the start of the run.
+ */
 export async function runImport(
   root: string,
   subrepo: ResolvedSubrepo,
   candidates: string[],
   opts: ImportOptions = {},
+  run?: RunProvenance,
 ): Promise<ImportResult> {
+  const startHead = run?.startHead ?? ((await revParse(root, 'HEAD')) ?? '')
+  const created = [...(run?.created ?? [])]
   const imported: string[] = []
   for (const [idx, sha] of candidates.entries()) {
     const meta = await readSequencerCommit(root, sha)
-    const conflicts = await importOne(root, subrepo, meta, opts)
-    if (conflicts) {
+    const step = await importOne(root, subrepo, meta, opts)
+    if (step.conflicts !== undefined) {
       const statePath = await writeSequencer(root, {
         subrepo: subrepo.name,
+        path: subrepo.path,
         current: meta,
         remaining: candidates.slice(idx + 1),
+        startHead,
+        created,
       })
-      throw new ImportConflictError(subrepo.name, sha, conflicts, statePath)
+      throw new ImportConflictError(subrepo.name, sha, step.conflicts, statePath)
     }
+    created.push(step.monoSha)
     imported.push(sha)
   }
   return {imported}
@@ -209,7 +238,8 @@ export async function runImport(
 
 /**
  * Finish the commit the user just resolved, then carry on with what was left. A later
- * candidate can conflict too, which simply rewrites the sequencer.
+ * candidate can conflict too, which simply rewrites the sequencer — with the same run
+ * provenance, so `--abort` after the second conflict still rewinds the whole pull.
  */
 export async function continueImport(
   root: string,
@@ -217,8 +247,71 @@ export async function continueImport(
   state: PullSequencer,
   opts: ImportOptions = {},
 ): Promise<ImportResult> {
-  await commitImport(root, state.current)
+  const sha = await commitImport(root, state.current)
   await clearSequencer(root)
-  const rest = await runImport(root, subrepo, state.remaining, opts)
+  const run: RunProvenance = {
+    startHead: state.startHead ?? sha,
+    created: [...(state.created ?? []), sha],
+  }
+  const rest = await runImport(root, subrepo, state.remaining, opts, run)
   return {imported: [state.current.sha, ...rest.imported]}
+}
+
+export interface AbortResult {
+  /** True when the monorepo was rewound all the way to the pre-pull HEAD. */
+  rewound: boolean
+  /** Monorepo commits this pull created and abort discarded (oldest first). */
+  discarded: string[]
+  /** Commits this pull created that abort kept, because history moved after they landed. */
+  kept: string[]
+  /** HEAD before the pull started, when the sequencer recorded it. */
+  startHead: string | null
+}
+
+/**
+ * Are the commits between `startHead` and HEAD exactly the ones this pull run created?
+ * That is the whole proof: anything else on the walk is somebody's work monosplice did not
+ * make, and rewinding past it would destroy it.
+ */
+async function runOwnsHistory(root: string, startHead: string, created: string[]): Promise<boolean> {
+  if (!(await gitOk(root, ['merge-base', '--is-ancestor', startHead, 'HEAD']))) return false
+  const walk = await revList(root, [`${startHead}..HEAD`]).catch(() => null)
+  if (walk === null) return false
+  return walk.length === created.length && walk.every((sha, i) => sha === created[created.length - 1 - i])
+}
+
+/**
+ * Put the subrepo directory — and nothing else — back to how `target` has it: index first
+ * (which also drops the conflict stages), then the work tree, then the files the aborted
+ * import created, which are untracked by now. Import required the path to be pristine before
+ * it started, so "untracked under the path" means "made by this pull".
+ */
+async function restoreSubrepoPath(root: string, subPath: string, target: string): Promise<void> {
+  await git(root, ['reset', '--quiet', target, '--', subPath])
+  // Nothing to check out when the path has no files at `target` and none in the index.
+  await gitOk(root, ['checkout', '--quiet', '--', subPath])
+  await git(root, ['clean', '-fdq', '--', subPath])
+  await git(root, ['reset', '--quiet', '--soft', target])
+}
+
+/**
+ * Abandon an interrupted import. Rewinds to the pre-pull HEAD when the sequencer can prove
+ * every commit since is one this run made; otherwise it undoes only the conflicted step and
+ * says which commits it left behind. Never touches anything outside the subrepo path.
+ */
+export async function abortImport(root: string, subPath: string, state: PullSequencer): Promise<AbortResult> {
+  const head = await git(root, ['rev-parse', 'HEAD'])
+  const created = state.created ?? []
+  const startHead = state.startHead ?? null
+  const provable = startHead !== null && (await runOwnsHistory(root, startHead, created))
+
+  await restoreSubrepoPath(root, subPath, provable ? startHead! : head)
+  await clearSequencer(root)
+
+  return {
+    rewound: provable,
+    discarded: provable ? created : [],
+    kept: provable ? [] : created,
+    startHead,
+  }
 }

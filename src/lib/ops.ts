@@ -14,7 +14,6 @@ import {
   type PullSequencer,
   checkImportPreconditions,
   runImport,
-  sequencerPath,
 } from '../core/importer.js'
 import {loadSyncView, pullSource, type SyncView} from '../core/sync.js'
 
@@ -26,20 +25,31 @@ export interface Reporter {
   log(message: string): void
   /** Non-fatal notice; goes to stderr so stdout stays pipeable. */
   warn(message: string): void
-  fail(message: string): never
+  /**
+   * This subrepo cannot proceed. `halt` marks a failure the rest of the run cannot survive —
+   * a conflict that wrote the sequencer, since only one of those can exist at a time.
+   */
+  fail(message: string, opts?: {halt?: boolean}): never
 }
 
 /**
- * A single subrepo refused to proceed. `push` collects these so one unpublished subrepo
- * cannot stop the others from exporting (S90); commands that must stay all-or-nothing
- * simply let it propagate.
+ * A single subrepo refused to proceed. Every multi-subrepo command collects these so one
+ * unpublished subrepo cannot stop the others (S90, S155) and reports them together at the
+ * end; `halt` is the exception that stops the run where it stands.
  */
 export class SubrepoFailure extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly halt = false,
+  ) {
     super(message)
     this.name = 'SubrepoFailure'
   }
 }
+
+/** What every subrepo-selecting command says when the config has nothing to work on. */
+export const NO_SUBREPOS_CONFIGURED =
+  'no subrepos configured — run `monosplice attach <folder> <git-url>` to connect one'
 
 /** Derive the sync view, turning an unreachable source repository into a user-facing error. */
 export async function loadView(root: string, subrepo: ResolvedSubrepo, r: Reporter): Promise<SyncView> {
@@ -58,14 +68,14 @@ export function nothingExistsYet(subrepo: ResolvedSubrepo): string {
 Commit something under ${subrepo.path}/ and run \`monosplice push ${subrepo.name} --yes\` to publish it, or run \`monosplice attach ${subrepo.path}\` once the remote has content.`
 }
 
-/** The public branch has history, but nothing on either side references the other. */
+/** The standalone branch has history, but nothing on either side references the other. */
 export function unrelatedRemote(subrepo: ResolvedSubrepo, consequence: string): string {
   return `${subrepo.name}: ${pullSource(subrepo)} (${subrepo.branch}) has history that is unrelated to this monorepo — no commit on either side references the other.
 ${consequence} To connect the two repositories, run:
   monosplice attach ${subrepo.path}`
 }
 
-/** Stop unless the public branch exists, distinguishing "not published" from "nothing at all". */
+/** Stop unless the standalone branch exists, distinguishing "not published" from "nothing at all". */
 export async function requirePublished(
   root: string,
   subrepo: ResolvedSubrepo,
@@ -92,22 +102,35 @@ Nothing was changed. Fix \`upstream\` or \`branch\` in your config, or drop \`up
   monosplice push ${subrepo.name} --yes`
 }
 
+/** The two ways out of a conflicted import, named the same way everywhere. */
+export const RESOLVE_OR_ABORT = `  monosplice pull --continue
+To abandon the import instead, restoring the monorepo to its pre-pull state:
+  monosplice pull --abort`
+
 /** Shared by `pull` and `sync`: neither may start while a sequencer sits on disk. */
-export async function pullInProgressMessage(root: string, state: PullSequencer): Promise<string> {
-  return `A pull of ${state.subrepo} is already in progress.\nResolve the conflict, \`git add\` the files, then run:\n  monosplice pull --continue\nTo abort instead, delete ${await sequencerPath(root)}.`
+export function pullInProgressMessage(state: PullSequencer): string {
+  return `A pull of ${state.subrepo} is already in progress.
+Nothing was changed. Resolve the conflict, \`git add\` the files, then run:
+${RESOLVE_OR_ABORT}`
 }
 
 export function reportImportFailure(subrepo: ResolvedSubrepo, err: unknown, r: Reporter): never {
   if (err instanceof ImportConflictError) {
+    // The sequencer is on disk now and only one can exist, so this stops the whole run.
     r.fail(
-      `${subrepo.name}: importing ${err.pubSha.slice(0, 10)} conflicts with local changes.\nConflicted files:\n${err.conflicts.map((f) => `  ${f}`).join('\n')}\nEdit each file to resolve the markers, \`git add\` it, then run:\n  monosplice pull --continue\nTo abort instead, delete ${err.statePath}.`,
+      `${subrepo.name}: importing ${err.pubSha.slice(0, 10)} conflicts with local changes.
+Conflicted files:
+${err.conflicts.map((f) => `  ${f}`).join('\n')}
+Edit each file to resolve the markers, \`git add\` it, then run:
+${RESOLVE_OR_ABORT}`,
+      {halt: true},
     )
   }
   if (err instanceof GitError) r.fail(`${subrepo.name}: ${err.message}`)
   r.fail(`${subrepo.name}: ${(err as Error).message}`)
 }
 
-/** Import every unreflected public commit. Returns how many landed. */
+/** Import every unreflected standalone-repo commit. Returns how many landed. */
 export async function importSubrepo(root: string, subrepo: ResolvedSubrepo, r: Reporter): Promise<number> {
   const view = await loadView(root, subrepo, r)
   await requirePublished(root, subrepo, view, r)
@@ -186,9 +209,9 @@ export interface ConfirmFirstPublishOptions {
 }
 
 /**
- * Publishing to a public remote is irreversible, so the very first push asks. At a terminal
- * that is a prompt; anywhere else it is a refusal naming the exact command, because a CI job
- * must never publish a repository by accident. Never returns when the answer is no.
+ * Publishing to a standalone remote is irreversible, so the very first push asks. At a
+ * terminal that is a prompt; anywhere else it is a refusal naming the exact command, because a
+ * CI job must never publish a repository by accident. Never returns when the answer is no.
  */
 export async function confirmFirstPublish(
   subrepo: ResolvedSubrepo,
@@ -203,7 +226,7 @@ export async function confirmFirstPublish(
     let answer: string
     try {
       answer = await rl.question(
-        `${subrepo.remote} (${subrepo.branch}) is empty. Publish ${subrepo.name}'s current tree as its first public commit? [y/N] `,
+        `${subrepo.remote} (${subrepo.branch}) is empty. Publish ${subrepo.name}'s current tree as its first commit there? [y/N] `,
       )
     } finally {
       rl.close()
@@ -214,15 +237,15 @@ export async function confirmFirstPublish(
 
   r.fail(
     `${subrepo.name}: ${subrepo.remote} has no ${subrepo.branch} branch — this would be the first publish of ${subrepo.path}/.
-${stateNote} Publishing to a public remote cannot be undone, so monosplice asks first; there is no terminal here to ask at. Run:
+${stateNote} Publishing to a standalone remote cannot be undone, so monosplice asks first; there is no terminal here to ask at. Run:
   monosplice push ${subrepo.name} --yes
-Add --full-history to replay every monorepo commit that touched ${subrepo.path}/ instead of publishing one baseline commit.`,
+Add --export-history to replay every monorepo commit that touched ${subrepo.path}/ instead of publishing one baseline commit.`,
   )
 }
 
 export interface FirstPublishOptions {
   /** Replay every commit touching the path instead of publishing one baseline commit. */
-  fullHistory: boolean
+  exportHistory: boolean
   /**
    * Asked once the preflight checks pass and only then — a subrepo with nothing in it must
    * report that, not prompt about publishing nothing. Must fail (never return) to cancel.
@@ -232,7 +255,7 @@ export interface FirstPublishOptions {
 
 export interface FirstPublishResult {
   commits: number
-  fullHistory: boolean
+  exportHistory: boolean
 }
 
 /**
@@ -255,13 +278,13 @@ export async function firstPublish(
 
   const nothingLeft = `${subrepo.name}: nothing to publish from ${subrepo.path}/ after applying exclude patterns — nothing was pushed.`
 
-  if (opts.fullHistory) {
+  if (opts.exportHistory) {
     const result = await publishFullHistory(root, subrepo, head).catch((err: unknown) => {
       if (err instanceof GitError) r.fail(`${subrepo.name}: ${err.message}`)
       r.fail(`${subrepo.name}: ${(err as Error).message}\nNothing was pushed to ${subrepo.remote}.`)
     })
     if (result.exported.length === 0) r.fail(nothingLeft)
-    return {commits: result.exported.length, fullHistory: true}
+    return {commits: result.exported.length, exportHistory: true}
   }
 
   const pubSha = await publishBaseline(root, subrepo, head).catch((err: unknown) => {
@@ -269,5 +292,5 @@ export async function firstPublish(
     r.fail(`${subrepo.name}: ${(err as Error).message}\nNothing was pushed to ${subrepo.remote}.`)
   })
   if (pubSha === null) r.fail(nothingLeft)
-  return {commits: 1, fullHistory: false}
+  return {commits: 1, exportHistory: false}
 }

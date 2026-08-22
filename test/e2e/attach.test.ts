@@ -214,12 +214,12 @@ describe('S121: attach a folder with content to an EMPTY remote', () => {
     expect((await runMonosplice(mono.dir, ['push'])).stdout).toMatch(/up to date/)
   })
 
-  it('--full-history replays every commit that touched the folder', async () => {
+  it('--export-history replays every commit that touched the folder', async () => {
     const {mono, pub, pubDir} = await attachFixture({emptyRemote: true, monoFiles})
     await mono.commit('feat: more core', {'core/src/util.ts': 'export const n = 1\n'})
     await mono.commit('chore: private churn', {'private/notes.md': 'nope\n'})
 
-    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--yes', '--full-history'])
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--yes', '--export-history'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     expect(await pub.subjects()).toEqual(['chore: initial monorepo', 'feat: more core'])
@@ -517,12 +517,12 @@ describe('S126: a config shape the inserter cannot handle', () => {
   })
 })
 
-describe('S131: attach --history on a new entry', () => {
+describe('S131: attach --import-history on a new entry', () => {
   it('commits the config entry on its own, then replays every public commit', async () => {
     const {mono, pub, pubDir, pubHead, pubSubjects} = await attachFixture({commits: 5})
     const monoBefore = await mono.subjects()
 
-    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--history'])
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--import-history'])
     expect(res.exitCode, res.stderr).toBe(0)
 
     const subjects = await mono.subjects()
@@ -548,9 +548,9 @@ describe('S131: attach --history on a new entry', () => {
     const before = configBytes(mono)
     const head = await mono.head()
 
-    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--history'])
+    const res = await runMonosplice(mono.dir, ['attach', 'core', pubDir, '--import-history'])
     expect(res.exitCode).not.toBe(0)
-    expect(res.stderr).toMatch(/--history/)
+    expect(res.stderr).toMatch(/--import-history/)
     expect(res.stderr).toMatch(/already has committed files/)
 
     expect(configBytes(mono).equals(before)).toBe(true)
@@ -668,8 +668,8 @@ describe('attach --help', () => {
     expect(res.stdout).toMatch(/--name/)
     expect(res.stdout).toMatch(/--branch/)
     expect(res.stdout).toMatch(/--theirs/)
-    expect(res.stdout).toMatch(/--full-history/)
-    expect(res.stdout).toMatch(/--history/)
+    expect(res.stdout).toMatch(/--export-history/)
+    expect(res.stdout).toMatch(/--import-history/)
     expect(res.stdout).toMatch(/--fork/)
   })
 })

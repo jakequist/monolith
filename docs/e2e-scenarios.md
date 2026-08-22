@@ -14,7 +14,7 @@ subrepo, `core/` = the configured subrepo path.
 
 - [x] S01 `init` scaffolds `monosplice.config.ts`; running it again is a safe no-op.
 - [x] S02 First `push --yes` (baseline): mono with mixed history → pub gets exactly one baseline commit whose tree equals `core/` subtree, carrying `Monosplice-Source`.
-- [x] S03 First `push --yes --full-history`: every mono commit touching `core/` replayed in order with messages/authors preserved and `Monosplice-Source` trailers.
+- [x] S03 First `push --yes --export-history`: every mono commit touching `core/` replayed in order with messages/authors preserved and `Monosplice-Source` trailers.
 - [x] S04 First push honors `exclude` patterns — excluded files absent from pub tree even though present in mono history.
 - [x] S05 Push against a pub that has history but no relation to mono → refuses, points at `monosplice attach`, exit ≠ 0.
 - [x] S06 First push when `core/` has no committed files yet → clear error, nothing pushed.
@@ -91,9 +91,9 @@ subrepo, `core/` = the configured subrepo path.
 
 - [x] S90 `push` with an unpublished subrepo, non-interactive, no `--yes` → refuses with a one-line explanation and the exact command to run; remote stays empty; other subrepos in the same run are still pushed.
 - [x] S91 `push --yes` publishes the baseline and reports it distinctly from normal exports; an immediately following `push` is "up to date"; later commits export per-commit.
-- [x] S92 `push --yes --full-history` replays all history; scan hooks run per replayed commit and a throwing hook aborts with nothing pushed (the dead-secret case).
+- [x] S92 `push --yes --export-history` replays all history; scan hooks run per replayed commit and a throwing hook aborts with nothing pushed (the dead-secret case).
 - [x] S93 `adopt <name>` with pub history and NO mono dir (shallow default): exactly ONE mono commit placing pub HEAD's tree at the path, `Monosplice-Origin: <pubHead>`; then `pull`, `push`, `status` all report in sync (ancestry-based reflection — pub's 50-commit history must NOT show as "50 to pull"). *(superseded by S130 via `attach`)*
-- [x] S94 `adopt <name> --history`: full per-commit import with authors/messages preserved (the old pull-adopt behavior), then in sync. *(superseded by S131 via `attach`)*
+- [x] S94 `adopt <name> --import-history`: full per-commit import with authors/messages preserved (the old pull-adopt behavior), then in sync. *(superseded by S131 via `attach`)*
 - [x] S95 `adopt` when BOTH sides have content and trees match exactly → baseline recorded (empty mono commit with Origin trailer); push/pull in sync; a NEW mono commit then exports parented on the EXISTING pub head (shared history going forward). *(superseded by S132 via `attach`)*
 - [x] S96 `adopt` when both sides have content and trees differ → refuses listing the differing paths, nothing written anywhere; `adopt --theirs` replaces the mono dir with pub content in one commit (Origin trailer) and lands in sync; the pre-adopt mono content stays in mono history but never exports. *(superseded by S132 via `attach`)*
 - [x] S97 `pull` against an unrelated pub (no trailers, mono dir exists) → refuses and points at `attach`; nothing imported, working tree untouched.
@@ -140,7 +140,7 @@ subrepo, `core/` = the configured subrepo path.
 > same safety rails, zero hand-editing.
 
 - [x] S120 `attach <folder> <url>` with no committed content at the folder and a remote that has history → ONE commit carrying both the config entry and the remote HEAD's tree at `<folder>`, with `Monosplice-Origin: <pubHead>`; `status` in sync; `pull`/`push` up to date. Works for nested paths (`packages/lib`). `--name`/`--branch` override the defaults (name defaults to the last path segment).
-- [x] S121 `attach <folder> <url>` with committed content at the folder and an EMPTY remote → the config entry is committed on its own, then first-push semantics: `--yes` publishes the baseline (`--full-history` replays every commit that touched the folder); without `--yes` (non-interactive) the config commit still lands, the error names `monosplice push <name> --yes`, exit ≠ 0; running that push then converges.
+- [x] S121 `attach <folder> <url>` with committed content at the folder and an EMPTY remote → the config entry is committed on its own, then first-push semantics: `--yes` publishes the baseline (`--export-history` replays every commit that touched the folder); without `--yes` (non-interactive) the config commit still lands, the error names `monosplice push <name> --yes`, exit ≠ 0; running that push then converges.
 - [x] S122 `attach` with committed content at the folder and a remote whose tree MATCHES → one commit: config entry + adopt baseline (`Monosplice-Origin`), in sync immediately; a later mono commit exports parented on the existing pub head.
 - [x] S123 `attach` with committed content and a remote whose tree DIFFERS → refuses listing the differing paths; config byte-identical, no commit. `attach --theirs` takes the remote tree in the same single commit (config + tree + Origin trailer).
 - [x] S124 `attach` refusals leave the config byte-identical and make no commit: name or path already configured, path nesting inside a configured subrepo, dirty working tree or staged changes, pull sequencer in progress.
@@ -151,13 +151,13 @@ subrepo, `core/` = the configured subrepo path.
 
 > `attach` absorbed `adopt` and `vendor`; both commands are gone. The URL argument is
 > optional: with a folder that already matches a configured entry, `attach <folder>` makes
-> first contact for it and writes nothing to the config. `--history` (from `adopt`) and
+> first contact for it and writes nothing to the config. `--import-history` (from `adopt`) and
 > `--fork` (from `vendor`) came along with them.
 
 - [x] S130 `attach <folder>` with NO url on a configured entry, pub history + empty/absent folder → exactly ONE mono commit (`Adopt <name> from …`, `Monosplice-Origin: <pubHead>`), the config file byte-identical, then `status`/`pull`/`push` all in sync (a 20-commit pub must not read as "20 to pull"). Resolves the entry by path *or* by name.
-- [x] S131 `--history` in both entry modes: `attach <folder>` on a configured entry replays every public commit with authors/messages preserved; `attach <folder> <url> --history` on a NEW entry commits the config entry on its own first and then replays. Refuses (nothing written) when the folder already has committed files, or when the remote has no branch.
+- [x] S131 `--import-history` in both entry modes: `attach <folder>` on a configured entry replays every public commit with authors/messages preserved; `attach <folder> <url> --import-history` on a NEW entry commits the config entry on its own first and then replays. Refuses (nothing written) when the folder already has committed files, or when the remote has no branch.
 - [x] S132 `attach <folder>` on a configured entry with content: trees match → empty baseline commit with the Origin trailer, in sync, later commits export on the existing pub head; trees differ → refuses listing the differing paths and writes nothing, `--theirs` takes the public tree in one commit.
-- [x] S133 `attach <folder>` on a configured entry whose remote is EMPTY → gated first publish: `--yes` publishes the baseline (`--full-history` replays), non-interactive without `--yes` refuses naming `monosplice push <name> --yes` and publishes nothing. Both sides empty → the shared "nothing exists yet" error.
+- [x] S133 `attach <folder>` on a configured entry whose remote is EMPTY → gated first publish: `--yes` publishes the baseline (`--export-history` replays), non-interactive without `--yes` refuses naming `monosplice push <name> --yes` and publishes nothing. Both sides empty → the shared "nothing exists yet" error.
 - [x] S134 `attach <folder>` on an already-related subrepo (trailers exist) → "already connected", no-op, exit ≠ 0, naming pull/push/sync.
 - [x] S135 `attach <folder>` preconditions on a configured entry: dirty files under the path, or staged changes anywhere → refuses before fetching or writing (same rules as `pull`), no tracking ref created.
 - [x] S136 `attach <folder> <url>` where the folder is already configured: a url equal to the configured remote (or to `upstream` when set) proceeds exactly as the url-less form; a different url refuses, naming the configured remote and pointing at the config file, with nothing changed.
@@ -165,3 +165,17 @@ subrepo, `core/` = the configured subrepo path.
 - [x] S138 `attach <folder> <upstream-url> --fork <fork-url>` writes `upstream` + `remote` (+ default pushBranch), takes the tree and the anchor from **upstream**, pulls from upstream and pushes to the fork; upstream is never written to. `--fork` equal to the url refuses; `--fork` on an already-configured entry refuses and names the config edit instead.
 - [x] S139 Write-access probe (advisory, never blocking): attaching to a writable remote with history prints no advisory and exits 0; attaching to a remote that can be fetched but refuses `git push` still succeeds (exit 0, commit made) and prints an advisory on stderr naming the triangular re-run with `--fork`. Skipped entirely with `--fork` and on an empty remote.
 - [x] S140 `monosplice adopt` and `monosplice vendor` no longer exist → oclif's unknown-command error, exit ≠ 0; and no user-facing string in the built CLI names either command.
+
+## CLI ergonomics
+
+> An external review of the CLI surface. The theme is the same throughout: every dead end
+> must name the command that gets you out of it, and every command must be usable from a
+> script without parsing prose.
+
+- [x] S150 `pull --abort` after a conflict restores the monorepo to exactly its pre-pull state — the imports this run committed are rewound, `core/` and the index are back to the pre-pull tree, and nothing outside `core/` (unstaged edits, untracked files) is touched; the sequencer is gone and a following `pull` starts clean. When monorepo history moved after the conflict, abort drops only the conflicted step, keeps (and names) the commits it cannot prove are its own. `--abort` with no pull in progress, and `--abort --continue` together, both refuse with exit ≠ 0 and nothing changed.
+- [x] S151 Flag rename: `--import-history` (replay the standalone repo's commits inwards) and `--export-history` (replay monorepo commits outwards on a first publish) are the only spellings — the old `--history` and `--full-history` are unknown flags on `attach` and `push`, exit ≠ 0, and each flag's `--help` text names the other.
+- [x] S152 A config with zero subrepos → `status`, `push`, `pull` and `sync` each print `no subrepos configured — run \`monosplice attach <folder> <git-url>\` to connect one` and exit 0; `status --json` still emits valid JSON (`{"subrepos":[]}`) and nothing else.
+- [x] S153 `status --check` exits 1 unless every subrepo is fully in sync (nothing to push, nothing to pull, no unreachable remote) and 0 when they are; the human output is byte-identical to `status` without the flag, and `--check --json` keeps stdout pure JSON.
+- [x] S154 `doctor --json` emits one stable machine-readable object on stdout and nothing else (no human report), with the same key set every run; the exit code is unchanged (0 clean, 1 with problems).
+- [x] S155 Multi-subrepo failure policy is uniform: `pull` and `sync` collect per-subrepo failures and keep going like `push`, reporting them all at the end with exit ≠ 0 — except an import conflict, which writes the sequencer and therefore stops the run immediately, naming `--continue`/`--abort`.
+- [x] S156 Wording and streams: no command description or user-facing message calls the other repo "public" (it is the "standalone" repo); `status`'s `!` diagnostics go to stderr so stdout stays pipeable, and `--json` output stays pure JSON on stdout.

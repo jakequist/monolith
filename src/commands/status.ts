@@ -4,7 +4,7 @@ import {MonospliceCommand} from '../lib/base.js'
 import {buildExportChain, computeExports, planExport} from '../core/exporter.js'
 import {readSequencer} from '../core/importer.js'
 import {tryLoadForkState} from '../core/sync.js'
-import {loadView} from '../lib/ops.js'
+import {NO_SUBREPOS_CONFIGURED, loadView} from '../lib/ops.js'
 
 /**
  * One row of the `--json` contract (S85). CI pipes this into jq, so the key set is
@@ -18,7 +18,7 @@ export interface SubrepoStatus {
   seeded: boolean
   /** Commits `push` would create. Null when the subrepo is not seeded. */
   ahead: number | null
-  /** Public commits `pull` would import. Null when the subrepo is not seeded. */
+  /** Standalone-repo commits `pull` would import. Null when the subrepo is not seeded. */
   behind: number | null
   inSync: boolean
   pullInProgress: boolean
@@ -38,7 +38,7 @@ interface ForkNote {
 }
 
 export default class Status extends MonospliceCommand {
-  static description = 'Show how far each subrepo is ahead of and behind its public remote'
+  static description = 'Show how far each subrepo is ahead of and behind its standalone remote'
 
   static args = {
     subrepo: Args.string({description: 'Only report this subrepo (defaults to all)', required: false}),
@@ -46,12 +46,17 @@ export default class Status extends MonospliceCommand {
 
   static flags = {
     json: Flags.boolean({description: 'Print machine-readable JSON and nothing else', default: false}),
+    check: Flags.boolean({
+      description: 'Exit 1 unless every subrepo is fully in sync (for CI); the report itself is unchanged',
+      default: false,
+    }),
   }
 
   static examples = [
     '<%= config.bin %> <%= command.id %>',
     '<%= config.bin %> <%= command.id %> core',
     '<%= config.bin %> <%= command.id %> --json',
+    '<%= config.bin %> <%= command.id %> --check',
   ]
 
   async run(): Promise<void> {
@@ -59,19 +64,34 @@ export default class Status extends MonospliceCommand {
     const project = await this.requireProject()
     const state = await readSequencer(project.root)
 
+    const selected = this.selectSubrepos(project, args.subrepo)
     const rows: SubrepoStatus[] = []
     const notes = new Map<string, ForkNote>()
-    for (const subrepo of this.selectSubrepos(project, args.subrepo)) {
+    for (const subrepo of selected) {
       const {row, note} = await this.inspect(project.root, subrepo, state?.subrepo === subrepo.name)
       rows.push(row)
       if (note) notes.set(row.name, note)
     }
 
-    if (flags.json) {
-      this.log(JSON.stringify({subrepos: rows}))
-      return
-    }
-    for (const row of rows) this.describe(row, notes.get(row.name))
+    if (flags.json) this.log(JSON.stringify({subrepos: rows}))
+    else if (selected.length === 0) this.log(NO_SUBREPOS_CONFIGURED)
+    else for (const row of rows) this.describe(row, notes.get(row.name))
+
+    if (flags.check) this.check(rows, notes)
+  }
+
+  /**
+   * The `--check` contract: exit 1 unless everything is converged and every remote answered.
+   * The report above is untouched — a machine reads the exit code, a human reads the lines.
+   */
+  private check(rows: SubrepoStatus[], notes: Map<string, ForkNote>): void {
+    const unreachable = [...notes].filter(([, n]) => n.unreachable).map(([name]) => name)
+    const failing = [...new Set([...rows.filter((r) => !r.inSync).map((r) => r.name), ...unreachable])]
+    if (failing.length === 0) return
+    this.error(
+      `--check: ${failing.join(', ')} ${failing.length === 1 ? 'is' : 'are'} not fully in sync.\nRun \`monosplice sync\` to converge, or \`monosplice status\` for the details.`,
+      {exit: 1},
+    )
   }
 
   private async inspect(
@@ -152,17 +172,19 @@ export default class Status extends MonospliceCommand {
       this.log(`${row.name}: ${parts.join(', ')}`)
     }
 
+    // The counts are the report; everything below is a diagnostic, so it goes to stderr and
+    // leaves stdout pipeable (S156).
     if (note?.unreachable) {
-      this.log(`  ! cannot reach fork ${row.remote} — the counts above are measured against upstream.`)
-      for (const line of note.unreachable.split('\n')) this.log(`    ${line}`)
+      this.logToStderr(`  ! cannot reach fork ${row.remote} — the counts above are measured against upstream.`)
+      for (const line of note.unreachable.split('\n')) this.logToStderr(`    ${line}`)
     }
     if (row.pullInProgress) {
-      this.log(`  ! a pull of ${row.name} is unfinished — resolve the conflict, \`git add\` the files,`)
-      this.log('    then run `monosplice pull --continue`')
+      this.logToStderr(`  ! a pull of ${row.name} is unfinished — resolve the conflict, \`git add\` the files,`)
+      this.logToStderr('    then run `monosplice pull --continue`, or `monosplice pull --abort` to throw it away')
     }
     if (row.hookError) {
-      this.log(`  ! ${row.hookError}`)
-      this.log(`    \`monosplice push ${row.name}\` would fail with this; the count above is an upper bound.`)
+      this.logToStderr(`  ! ${row.hookError}`)
+      this.logToStderr(`    \`monosplice push ${row.name}\` would fail with this; the count above is an upper bound.`)
     }
   }
 }

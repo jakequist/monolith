@@ -26,7 +26,7 @@ export interface SubrepoConfig {
   name?: string
   /** Directory inside the monorepo, relative to the config file (e.g. "taka-core"). */
   path: string
-  /** Git URL of the public repo. With `upstream` set, this is your fork: the push destination. */
+  /** Git URL of the standalone repo. With `upstream` set, this is your fork: the push destination. */
   remote: string
   /**
    * Git URL to pull from when it is not the repo you push to (triangular remotes). Set it and

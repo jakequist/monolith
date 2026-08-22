@@ -259,6 +259,127 @@ describe('S36: imported file matching an exclude pattern', () => {
   })
 })
 
+const SEQUENCER = '.git/monosplice/pull-state.json'
+
+/**
+ * One clean import followed by a conflicting one, so `--abort` has both a committed import
+ * to rewind and a half-applied merge to clean up.
+ */
+async function conflictAfterOneImport(): Promise<{mono: TestRepo; ext: TestRepo; startHead: string}> {
+  const {mono, ext} = await seededWithExternal()
+
+  await mono.commit('docs: mono wording', {'core/README.md': '# core\n\nmono wording\n'})
+  await ext.commit('external: unrelated', {'unrelated.txt': 'u\n'}, EXT_AUTHOR)
+  await ext.commit('docs: ext wording', {'README.md': '# core\n\next wording\n'}, EXT_AUTHOR)
+  await ext.git(['push', 'origin', 'main'])
+
+  const startHead = await mono.head()
+  const conflicted = await runMonosplice(mono.dir, ['pull'])
+  expect(conflicted.exitCode).not.toBe(0)
+  expect(mono.exists(SEQUENCER)).toBe(true)
+  // the clean one landed, the conflicting one did not
+  expect((await mono.subjects()).at(-1)).toBe('external: unrelated')
+  return {mono, ext, startHead}
+}
+
+describe('S150: pull --abort', () => {
+  it('rewinds this run’s imports and restores the pre-pull state', async () => {
+    const {mono, startHead} = await conflictAfterOneImport()
+
+    const res = await runMonosplice(mono.dir, ['pull', '--abort'])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(res.stdout).toMatch(/aborted/i)
+
+    expect(await mono.head()).toBe(startHead)
+    expect(await mono.git(['status', '--porcelain'])).toBe('')
+    expect(mono.read('core/README.md')).toBe('# core\n\nmono wording\n')
+    expect(mono.exists('core/unrelated.txt')).toBe(false)
+    expect(mono.exists(SEQUENCER)).toBe(false)
+    expect((await mono.subjects()).at(-1)).toBe('docs: mono wording')
+
+    // Aborting left no pull in progress, so the whole thing can be attempted again.
+    const again = await runMonosplice(mono.dir, ['pull'])
+    expect(again.exitCode).not.toBe(0)
+    expect(again.stderr).toContain('core/README.md')
+    expect(again.stderr).toMatch(/--continue/)
+  })
+
+  it('never touches anything outside the subrepo path', async () => {
+    const {mono, ext} = await seededWithExternal()
+
+    await mono.commit('docs: mono wording', {'core/README.md': '# core\n\nmono wording\n'})
+    await ext.commit('docs: ext wording', {'README.md': '# core\n\next wording\n'}, EXT_AUTHOR)
+    await ext.git(['push', 'origin', 'main'])
+
+    // Unstaged work outside core/ is allowed while pulling, so abort must preserve it.
+    mono.write('private/secrets.md', 'work in progress\n')
+    mono.write('private/scratch.tmp', 'scratch\n')
+
+    expect((await runMonosplice(mono.dir, ['pull'])).exitCode).not.toBe(0)
+
+    const res = await runMonosplice(mono.dir, ['pull', '--abort'])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(mono.read('private/secrets.md')).toBe('work in progress\n')
+    expect(mono.read('private/scratch.tmp')).toBe('scratch\n')
+    expect(mono.read('core/README.md')).toBe('# core\n\nmono wording\n')
+    expect(await mono.git(['status', '--porcelain'])).toBe(' M private/secrets.md\n?? private/scratch.tmp')
+  })
+
+  it('keeps commits it cannot prove are its own, and says so', async () => {
+    const {mono, startHead} = await conflictAfterOneImport()
+    const afterImport = await mono.head()
+
+    // The user resolves and commits by hand: monorepo history moved underneath the sequencer.
+    mono.write('core/README.md', '# core\n\nhand resolved\n')
+    await mono.git(['add', 'core/README.md'])
+    await mono.commit('chore: resolved by hand')
+    const handHead = await mono.head()
+
+    const res = await runMonosplice(mono.dir, ['pull', '--abort'])
+    expect(res.exitCode, res.stderr).toBe(0)
+    expect(res.stdout).toMatch(/aborted/i)
+    expect(res.stdout).toMatch(/kept/i)
+    expect(res.stdout).toContain(startHead.slice(0, 10))
+
+    expect(await mono.head()).toBe(handHead)
+    expect(await mono.git(['rev-parse', 'HEAD~1'])).toBe(afterImport)
+    expect(mono.exists(SEQUENCER)).toBe(false)
+    expect(await mono.git(['status', '--porcelain'])).toBe('')
+  })
+
+  it('refuses when no pull is in progress, and refuses --abort with --continue', async () => {
+    const {mono} = await seededWithExternal()
+
+    const none = await runMonosplice(mono.dir, ['pull', '--abort'])
+    expect(none.exitCode).not.toBe(0)
+    expect(none.stderr).toMatch(/no pull is in progress/i)
+
+    const both = await runMonosplice(mono.dir, ['pull', '--abort', '--continue'])
+    expect(both.exitCode).not.toBe(0)
+    expect(both.stderr).toMatch(/--abort/)
+    expect(both.stderr).toMatch(/--continue/)
+  })
+
+  it('is the abort route every conflict message names', async () => {
+    const {mono, ext} = await seededWithExternal()
+    await mono.commit('docs: mono wording', {'core/README.md': '# core\n\nmono wording\n'})
+    await ext.commit('docs: ext wording', {'README.md': '# core\n\next wording\n'}, EXT_AUTHOR)
+    await ext.git(['push', 'origin', 'main'])
+
+    const conflicted = await runMonosplice(mono.dir, ['pull'])
+    expect(conflicted.stderr).toMatch(/monosplice pull --abort/)
+    expect(conflicted.stderr).not.toMatch(/delete .*pull-state\.json/)
+
+    const restart = await runMonosplice(mono.dir, ['pull'])
+    expect(restart.stderr).toMatch(/monosplice pull --abort/)
+    expect(restart.stderr).not.toMatch(/delete .*pull-state\.json/)
+
+    const doc = await runMonosplice(mono.dir, ['doctor'])
+    expect(doc.stdout).toMatch(/monosplice pull --abort/)
+    expect(doc.stdout).not.toMatch(/delete the file/)
+  })
+})
+
 describe('pull against an unseeded or unreachable remote', () => {
   it('tells the user to publish when the public branch does not exist', async () => {
     const {mono} = await standardFixture()

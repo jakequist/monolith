@@ -36,7 +36,7 @@ submodule-free ergonomics."
   push and writes it with `--force-with-lease`, because that branch is a derived artifact
   monosplice owns. Upstream is never written to — no branch, no tag.
 - **First contact is detected, not configured.** Outbound (`pubHead` null) is a
-  confirmation-gated first `push` — TTY prompt, `--yes` otherwise, plus `--full-history`.
+  confirmation-gated first `push` — TTY prompt, `--yes` otherwise, plus `--export-history`.
   Inbound (pub has unrelated history) is `adopt`. Unrelated + either direction → refuse and
   name `monosplice adopt`. Both empty → one shared "nothing exists yet" error. There is no
   `seed` command.
