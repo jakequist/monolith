@@ -59,8 +59,6 @@ $ monosplice attach ./core git@github.com:acme/core.git
 ```
 
 That's it. `core/` is now the root of a real repo, and your monorepo didn't even notice.
-(`--yes` answers the publish prompt in scripts; `--export-history` replays every commit
-that ever touched `core/` instead of one baseline commit.)
 
 ### I have a monorepo and want to import an external repo
 
@@ -85,10 +83,9 @@ normal directory: patch it in ordinary commits, and `monosplice pull lodash` thr
 merges upstream updates underneath your patches. To send patches *back* to a project you
 can't push to, see the [fork workflow](docs/reference.md#pushing-patches-back-upstream-fork-workflow).
 
-### Then just work
+### Life continues as normal
 
-Whatever you attached, daily life is ordinary git plus one verb. No new mental model, no
-ceremony to teach your team:
+Whatever you attached, your monorepo behaves as if the subrepos are simple files.  You manage the subrepos via the `monosplice` CLI. 
 
 ```sh
 git commit -am "feat(core): add the greeter"
@@ -98,7 +95,7 @@ monosplice status   # core: 1 to push
 monosplice push     # exports the core/ commit, and only that one
 ```
 
-When someone lands a PR against the standalone repo:
+To fetch the latest code from an upstream subrepo: 
 
 ```sh
 monosplice pull     # replays it into core/, original author preserved
@@ -128,7 +125,7 @@ Full flags and edge-case behaviour: [docs/reference.md](docs/reference.md).
 
 ## How it works
 
-No magic, no daemon, no lock-in — just unusually disciplined bookkeeping.
+No magic, no daemon, no lock-in.
 
 **Two histories, one mapping.** The monorepo and each standalone repo have independent
 histories; monosplice replays commits between them and records the correspondence in commit
@@ -162,8 +159,6 @@ thing never happened. A resolution you keep is re-exported, so neither side lose
 Details: [the conflict flow](docs/reference.md#the-conflict-flow).
 
 ## Compared to the alternatives
-
-Yes, we know about all of these. Here's the honest scorecard:
 
 | | git submodule | git subtree | git-subrepo | monosplice |
 | --- | --- | --- | --- | --- |
@@ -204,8 +199,7 @@ Things monosplice won't do, listed here so you don't find out the hard way:
 - **`status` talks to the network by default.** Re-deriving state is a couple of `git log`
   scans per subrepo — cheap. Fetching each remote is what you actually wait on;
   `monosplice status --offline` skips it and measures against the last fetch instead.
-- **Node ≥ 20 runtime.** This is a TypeScript CLI, not a git subcommand. We've made our
-  peace with it; standalone binaries are on the roadmap if you can't.
+- **Node ≥ 20 runtime.** This is a TypeScript CLI, not a git subcommand. 
 
 ## Going deeper
 
