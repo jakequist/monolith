@@ -1,8 +1,8 @@
 # monosplice
 
-CLI (TypeScript + oclif) for managing monorepos that publish subdirectories as standalone
-open-source repos, with bidirectional sync. Think "git subtree with Copybara's brain and
-submodule-free ergonomics."
+CLI (Rust, single static binary) for managing monorepos that publish subdirectories as
+standalone open-source repos, with bidirectional sync. Think "git subtree with Copybara's
+brain and submodule-free ergonomics."
 
 ## Architecture (the invariants — do not violate these)
 
@@ -48,7 +48,8 @@ submodule-free ergonomics."
   (`rev-list`, `commit-tree`, `mktree`, `cat-file`) against the object database. Import is the
   only operation allowed to modify the working tree (it's a merge the user resolves) — and
   `adopt` is an import-side op, so it may too.
-- **Talk to git by shelling out** (`execa` + system `git`). No isomorphic-git, no nodegit.
+- **Talk to git by shelling out** (`std::process::Command` + system `git`). No git library,
+  ever — not libgit2, not gitoxide.
 - **Fail loud on surprises.** Cursor not an ancestor of HEAD (rebase/force-push), diverged
   public remote, dirty subrepo dir on pull → stop with a clear message. Never export garbage.
 - **Pushing to a public remote is irreversible.** Any code path that writes to a remote must
@@ -56,25 +57,39 @@ submodule-free ergonomics."
 
 ## Stack & commands
 
-- pnpm, TypeScript (strict), oclif, vitest, execa. Node LTS. MIT license.
-- `pnpm build` — compile. `pnpm test` — unit tests. `pnpm test:e2e` — e2e suite (black-box,
-  runs the built CLI). `pnpm lint` / `pnpm typecheck`.
-- Config file is `monosplice.config.ts` loaded via jiti; `defineConfig()` provides types.
+- Rust (edition 2021), single binary crate, all code synchronous. MIT license.
+- `cargo build` — compile (`target/debug/monosplice`). `cargo test` — everything: the
+  in-module unit tests and the black-box e2e suite in `tests/`. `cargo clippy -- -D warnings`
+  and `cargo fmt` must both be clean before anything lands.
+- Dependencies are fixed: `clap` (+ `clap_complete`), `serde`, `serde_json`, `toml`,
+  `globset`. **Do not add crates.** Everything else is std; git is always a subprocess.
+- Config file is `monosplice.toml` (kebab-case keys, `deny_unknown_fields`), loaded and
+  validated in `src/config.rs`. There is one filename and no config evaluation.
+- Hooks (`scan`, `transform`, `rewrite-message`) are **shell commands** run via `sh -c`, not
+  functions: `src/core/hooks.rs` for the contract, `src/core/filter.rs` for the order.
+- Unit tests live in a `#[cfg(test)]` module inside the file they test; e2e tests are
+  `tests/e2e_*.rs` over the shared harness in `tests/common/mod.rs`.
 
 ## Releasing & repo operations
 
 - Repo: `github.com/jakequist/monosplice` (public; renamed from `monolith` — old URLs
   redirect). Local checkout: `/home/jake/monosplice`.
-- **Distribution: npm is primary.** Package `monosplice`, published from CI via npm
-  **trusted publishing** (OIDC). There is NO npm token anywhere and there must never be —
+- **Distribution: GitHub Releases is primary.** The release assets are five per-target
+  tarballs, `monosplice-X.Y.Z-<target>.tar.gz` (x86_64/aarch64 linux-musl, x86_64/aarch64
+  apple-darwin, x86_64-pc-windows-msvc), each holding one `monosplice` binary, plus
+  `install.sh` — that is what the `curl … | sh` one-liner and `monosplice update` both read.
+  npm still publishes, but the package in `npm/` is now a **shim** that downloads the same
+  asset; `cargo install monosplice` is the third path.
+- **The npm publish constraints are unchanged.** Package `monosplice`, published from CI via
+  npm **trusted publishing** (OIDC). There is NO npm token anywhere and there must never be —
   do not add an `NPM_TOKEN` secret or `registry-url` to setup-node in release.yml (a
   placeholder token in .npmrc shadows the OIDC exchange). The trusted publisher registered
   on npmjs.com is exactly `release.yml` in this repo; renaming that file breaks publishing
-  until the registration is updated. GitHub Releases carries the same tarball
-  (`monosplice-X.Y.Z.tgz` + stable `monosplice.tgz`); `install.sh` wraps `npm install -g`.
-- **To release:** bump `version` in package.json, commit, `git tag vX.Y.Z`, push main + the
-  tag. release.yml verifies tag == package version, runs the full suite, packs, creates the
-  GitHub release, publishes to npm with provenance. Nothing is ever published by hand.
+  until the registration is updated.
+- **To release:** bump `version` in **Cargo.toml AND npm/package.json** (they must match the
+  tag), commit, `git tag vX.Y.Z`, push main + the tag. release.yml verifies tag == crate
+  version, runs the full suite, cross-builds the five targets, creates the GitHub release
+  with the tarballs, and publishes the npm shim. Nothing is ever published by hand.
 - **If a release run fails partway, do NOT re-run it** — `gh release create` is not
   idempotent and npm refuses to republish a version. Instead: fix the problem, then
   `gh release delete vX.Y.Z --cleanup-tag --yes`, re-tag the fixed commit, push the tag.
@@ -83,7 +98,7 @@ submodule-free ergonomics."
 - GitHub auth from this machine: `.env` (gitignored, never print/commit it) holds
   `GH_TOKEN`. Load with `set -a; source .env; set +a` for `gh`; pushes work via
   `git -c credential.helper='!f() { echo "username=jakequist"; echo "password=$GH_TOKEN"; }; f' push …`.
-- CI (`ci.yml`) runs typecheck + the full suite on every push/PR. Both workflows live in
+- CI (`ci.yml`) builds and runs the full suite on every push/PR. Both workflows live in
   `.github/workflows/`.
 
 ## TDD — non-negotiable
@@ -91,20 +106,23 @@ submodule-free ergonomics."
 This project is test-driven from day one. The workflow for every change:
 
 1. **Write the failing test first.** For command behavior, that's an e2e scenario in
-   `test/e2e/` (see `docs/e2e-scenarios.md` for the backlog). For pure logic (trailer
-   parsing, config validation, path filtering), a unit test in `test/unit/`.
+   `tests/e2e_*.rs` (see `docs/e2e-scenarios.md` for the backlog). For pure logic (trailer
+   parsing, config validation, path filtering), a unit test in the `#[cfg(test)]` module of
+   the file that owns the logic.
 2. Run it, watch it fail for the right reason.
 3. Implement the minimum to pass. Refactor with tests green.
 4. A feature without a test does not exist. A bugfix starts with a regression test.
 
 E2E conventions:
-- Tests are **black-box**: they invoke the built `monosplice` binary via execa and assert on
-  exit codes, stdout, and resulting git state. No importing internals into e2e tests.
+- Tests are **black-box**: they invoke the built binary via `env!("CARGO_BIN_EXE_monosplice")`
+  and assert on exit codes, stdout, stderr and resulting git state. Never call crate
+  internals from `tests/`.
 - Remotes are **local bare repos** (`file://` URLs) in temp dirs. No network, ever.
 - Determinism: fixed `GIT_AUTHOR_*`/`GIT_COMMITTER_*` env, `GIT_CONFIG_GLOBAL=/dev/null`,
   `GIT_CONFIG_SYSTEM=/dev/null`, fixed dates. Snapshot `git log --format=...` output freely.
-- Shared harness lives in `test/e2e/harness.ts` (`makeMonorepo`, `makeBareRemote`,
-  `runMonosplice`, `gitLog`, ...). Grow the harness instead of duplicating setup.
+- Shared harness lives in `tests/common/mod.rs` (`make_repo`, `make_bare_remote`,
+  `run_monosplice`, `write_config`, `standard_fixture`, ...). Grow the harness instead of
+  duplicating setup.
 
 ## How to work in this repo (agent orchestration)
 
@@ -121,8 +139,9 @@ subagents** via the Agent tool (`model: "opus"`).
 
 ## Code style
 
-- Small modules with pure functions where possible; command classes stay thin and call into
-  `src/core/`. Prefer explicit types at module boundaries, inference inside.
+- Small modules with pure functions where possible; command modules stay thin and call into
+  `src/core/`. No `unwrap()` on any path user input can reach — bubble a `Result` into the
+  reporter instead.
 - Error messages are written for the user at the terminal: say what happened, why monosplice
   stopped, and the exact command to run next.
 - No comments that narrate the diff; comment only non-obvious constraints.
