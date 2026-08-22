@@ -4,3 +4,4 @@ dist/
 oclif.manifest.json
 *.tsbuildinfo
 *.tgz
+/target

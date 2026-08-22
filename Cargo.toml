@@ -1,0 +1,21 @@
+[package]
+name = "monosplice"
+version = "0.4.0"
+edition = "2021"
+license = "MIT"
+description = "Ergonomic bidirectional sync between a monorepo and the standalone repos it splices out. Submodule accuracy without submodule pain."
+repository = "https://github.com/jakequist/monosplice"
+authors = ["Jake Quist"]
+
+[dependencies]
+clap = { version = "4", features = ["derive", "wrap_help"] }
+clap_complete = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+globset = "0.4"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
